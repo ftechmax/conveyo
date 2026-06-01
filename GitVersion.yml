@@ -1,0 +1,8 @@
+workflow: TrunkBased/preview1
+next-version: 0.1.0
+branches:
+  main:
+    mode: ContinuousDelivery
+    label: 'preview'
+    increment: Patch
+    regex: ^main$

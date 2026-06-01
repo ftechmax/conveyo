@@ -1,0 +1,89 @@
+name: Main
+
+on:
+  workflow_run:
+    workflows:
+      - Smoke
+    types:
+      - completed
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish-packages:
+    name: Build and push packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      PACKAGE_OUTPUT: artifacts/packages
+
+    steps:
+      - name: Checkout smoke-tested commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Verify smoke-tested commit
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.workflow_run.head_sha }}"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.5.0
+        with:
+          versionSpec: "6.7.x"
+
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4.5.0
+
+      - name: Restore
+        run: dotnet restore Conveyo.sln
+
+      - name: Build
+        run: dotnet build Conveyo.sln --configuration Release --no-restore -p:Version=${{ steps.gitversion.outputs.semVer }}
+
+      - name: Pack
+        run: dotnet pack Conveyo.sln --configuration Release --no-build --output "$PACKAGE_OUTPUT" -p:Version=${{ steps.gitversion.outputs.semVer }}
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            ${{ env.PACKAGE_OUTPUT }}/*.nupkg
+            ${{ env.PACKAGE_OUTPUT }}/*.snupkg
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.gitversion.outputs.semVer }}
+          commit: 'main'
+          name: Release ${{ steps.gitversion.outputs.semVer }}
+          generateReleaseNotes: true
+          prerelease: ${{ steps.gitversion.outputs.preReleaseTag != '' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ftechmax
+
+      - name: Push packages
+        run: dotnet nuget push "$PACKAGE_OUTPUT"/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}

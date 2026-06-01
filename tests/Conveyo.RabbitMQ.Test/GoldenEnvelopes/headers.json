@@ -1,0 +1,29 @@
+{
+  "envelopeVersion": "1",
+  "messageId": "11111111-2222-3333-4444-555555555555",
+  "correlationId": "33333333-4444-5555-6666-777777777777",
+  "destinationAddress": "queue:golden-destination",
+  "messageType": [
+    "conveyo:golden.headered-command.v1"
+  ],
+  "message": {
+    "invoiceNumber": "INV-2026-0002",
+    "retryCount": 1,
+    "force": false
+  },
+  "sentTime": "2026-05-14T12:34:56.789Z",
+  "headers": {
+    "tenant-id": "tenant-007",
+    "priority": "5",
+    "trace-enabled": "true",
+    "source": "golden-tests"
+  },
+  "host": {
+    "machineName": "golden-host",
+    "processName": "Conveyo.GoldenTests",
+    "conveyoVersion": "0.0.0-golden",
+    "operatingSystemVersion": "Unix 6.1.0",
+    "runtime": "dotnet",
+    "runtimeVersion": "10.0.0"
+  }
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Conveyo.RabbitMQ</RootNamespace>
+    <AssemblyName>Conveyo.RabbitMQ</AssemblyName>
+    <PackageId>Conveyo.RabbitMQ</PackageId>
+    <Description>RabbitMQ transport for Conveyo. Implements publish/send endpoints with publisher confirms, mandatory routing, prefetch-based backpressure, automatic recovery, error/skipped queues, and Fault&lt;T&gt; side-channels.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Conveyo.RabbitMQ.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Conveyo\Conveyo.csproj" />
+  </ItemGroup>
+
+</Project>

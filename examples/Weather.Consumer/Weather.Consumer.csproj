@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Weather.Consumer-75056a70-8d69-4293-a9c6-f326c321b190</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Conveyo.RabbitMQ\Conveyo.RabbitMQ.csproj" />
+    <ProjectReference Include="..\..\src\Conveyo\Conveyo.csproj" />
+    <ProjectReference Include="..\..\src\Conveyo.Storage.Postgres\Conveyo.Storage.Postgres.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\Weather.Contracts\Weather.Contracts.projitems" Label="Shared" />
+</Project>

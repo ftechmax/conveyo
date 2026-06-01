@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Conveyo.Storage.Postgres</RootNamespace>
+    <AssemblyName>Conveyo.Storage.Postgres</AssemblyName>
+    <PackageId>Conveyo.Storage.Postgres</PackageId>
+    <Description>PostgreSQL chunked storage backend for Conveyo MessageData. Persists large payloads under pgbin:// addresses with optional gzip and TTL.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Conveyo\Conveyo.csproj" />
+  </ItemGroup>
+
+</Project>

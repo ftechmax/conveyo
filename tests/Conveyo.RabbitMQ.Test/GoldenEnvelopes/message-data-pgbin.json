@@ -1,0 +1,25 @@
+{
+  "envelopeVersion": "1",
+  "messageId": "11111111-2222-3333-4444-555555555555",
+  "correlationId": "33333333-4444-5555-6666-777777777777",
+  "destinationAddress": "queue:golden-destination",
+  "messageType": [
+    "conveyo:golden.pgbin-payload.v1"
+  ],
+  "message": {
+    "name": "pgbin-payload",
+    "payload": {
+      "address": "pgbin://message_data/files/0194ad8f-61a2-7f28-9001-111111111111"
+    }
+  },
+  "sentTime": "2026-05-14T12:34:56.789Z",
+  "headers": null,
+  "host": {
+    "machineName": "golden-host",
+    "processName": "Conveyo.GoldenTests",
+    "conveyoVersion": "0.0.0-golden",
+    "operatingSystemVersion": "Unix 6.1.0",
+    "runtime": "dotnet",
+    "runtimeVersion": "10.0.0"
+  }
+}
