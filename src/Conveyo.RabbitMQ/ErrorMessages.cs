@@ -6,6 +6,9 @@ internal static class ErrorMessages
     public const string ChannelNotInitialized = "Channel not initialized.";
     public const string ConnectionNotInitialized = "RabbitMQ connection not initialized.";
     public const string RetryCountCannotBeNegative = "Retry count cannot be negative.";
+    public const string InitialConnectionTimeoutCannotBeNegative = "Initial connection timeout cannot be negative.";
+    public const string InitialConnectionRetryDelayMustBePositive = "Initial connection retry delay must be positive.";
+    public const string InitialConnectionMaxRetryDelayTooSmall = "Initial connection max retry delay must be greater than or equal to the initial connection retry delay.";
     public const string EnvelopeByteLimitMustBePositive = "Envelope byte limit must be positive.";
     public const string PortOutOfRange = "Port must be between 1 and 65535.";
     public const string MessageEnvelopeJsonInvalid = "Invalid message envelope JSON.";

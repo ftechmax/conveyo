@@ -54,7 +54,15 @@ rabbit.Host("rabbitmq.internal", "/", host =>
 | `MaxEnvelopeSizeBytes` | `1 MiB` | Maximum inbound envelope body size. Oversized bodies are moved to `_error` without copying the original body. |
 | `IncludeFaultExceptionDetails` | `false` | Include exception messages, stack traces, and inner exceptions in broker-visible fault metadata. Use only when that data is safe to expose. |
 
-`RabbitMqHostOptions` also exposes `NetworkRecoveryInterval` and `RequestedHeartbeat` as settable properties.
+`RabbitMqHostOptions` also exposes `NetworkRecoveryInterval`, `RequestedHeartbeat`, `InitialConnectionTimeout`, `InitialConnectionRetryDelay`, and `InitialConnectionMaxRetryDelay` as settable properties.
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `InitialConnectionTimeout` | `2m` | How long the first connection to the broker is retried before startup fails. `TimeSpan.Zero` fails on the first attempt. |
+| `InitialConnectionRetryDelay` | `2s` | Delay before the first retry of that connection, doubling on each failure. |
+| `InitialConnectionMaxRetryDelay` | `30s` | Ceiling for that backoff. |
+
+Automatic recovery covers a connection that has been established once; the client does not retry the first one. Conveyo does, so a broker that is still starting, or a user an operator has not provisioned yet, results in a wait rather than a failed host start. Every attempt is logged at `Warning`; when the timeout is spent the last exception propagates and startup fails as it would without the retry.
 
 ## TLS
 

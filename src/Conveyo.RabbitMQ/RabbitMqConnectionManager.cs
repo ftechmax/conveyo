@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
@@ -12,7 +13,7 @@ internal sealed class RabbitMqConnectionManager(ILogger? logger = null)
     public async Task StartAsync(RabbitMqHostOptions options, CancellationToken cancellationToken)
     {
         var factory = CreateConnectionFactory(options);
-        Connection = await factory.CreateConnectionAsync(cancellationToken);
+        Connection = await ConnectAsync(factory, options, cancellationToken);
         ConsumerChannel = await Connection.CreateChannelAsync(
             options: new CreateChannelOptions(
                 publisherConfirmationsEnabled: false,
@@ -108,5 +109,67 @@ internal sealed class RabbitMqConnectionManager(ILogger? logger = null)
         }
 
         return factory;
+    }
+
+    private async Task<IConnection> ConnectAsync(
+        ConnectionFactory factory,
+        RabbitMqHostOptions options,
+        CancellationToken cancellationToken)
+    {
+        ValidateInitialConnectionOptions(options);
+
+        var stopwatch = Stopwatch.StartNew();
+        var delay = options.InitialConnectionRetryDelay;
+        var attempt = 1;
+
+        while (true)
+        {
+            try
+            {
+                return await factory.CreateConnectionAsync(cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                if (stopwatch.Elapsed + delay > options.InitialConnectionTimeout)
+                {
+                    logger?.LogError(
+                        exception, LogMessages.InitialConnectionFailed, options.Host, attempt, stopwatch.Elapsed);
+
+                    throw;
+                }
+
+                logger?.LogWarning(
+                    exception, LogMessages.InitialConnectionAttemptFailed, options.Host, attempt, delay);
+
+                await Task.Delay(delay, cancellationToken);
+
+                attempt++;
+                delay = NextDelay(delay, options.InitialConnectionMaxRetryDelay);
+            }
+        }
+    }
+
+    private static TimeSpan NextDelay(TimeSpan delay, TimeSpan maxDelay) =>
+        delay.Ticks > maxDelay.Ticks / 2 ? maxDelay : TimeSpan.FromTicks(delay.Ticks * 2);
+
+    private static void ValidateInitialConnectionOptions(RabbitMqHostOptions options)
+    {
+        if (options.InitialConnectionTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), ErrorMessages.InitialConnectionTimeoutCannotBeNegative);
+        }
+
+        if (options.InitialConnectionRetryDelay <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), ErrorMessages.InitialConnectionRetryDelayMustBePositive);
+        }
+
+        if (options.InitialConnectionMaxRetryDelay < options.InitialConnectionRetryDelay)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), ErrorMessages.InitialConnectionMaxRetryDelayTooSmall);
+        }
     }
 }

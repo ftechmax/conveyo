@@ -14,6 +14,12 @@ public sealed record RabbitMqHostOptions
     /// </summary>
     public const ushort DefaultPrefetchCount = 16;
 
+    public static readonly TimeSpan DefaultInitialConnectionRetryDelay = TimeSpan.FromSeconds(2);
+
+    public static readonly TimeSpan DefaultInitialConnectionMaxRetryDelay = TimeSpan.FromSeconds(30);
+
+    public static readonly TimeSpan DefaultInitialConnectionTimeout = TimeSpan.FromMinutes(2);
+
     public required string ClientName { get; init; }
 
     public required string Host { get; init; }
@@ -54,6 +60,26 @@ public sealed record RabbitMqHostOptions
     /// long-idle connections. <c>0</c> disables heartbeats.
     /// </summary>
     public TimeSpan RequestedHeartbeat { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long to keep retrying the first connection to the broker before startup fails. Automatic
+    /// recovery only covers connections that have been established once, so without this a broker
+    /// that is still starting, or credentials an operator has not provisioned yet, aborts host
+    /// startup. <c>TimeSpan.Zero</c> fails on the first attempt.
+    /// </summary>
+    public TimeSpan InitialConnectionTimeout { get; set; } = DefaultInitialConnectionTimeout;
+
+    /// <summary>
+    /// Delay before the first retry of the initial connection. Consecutive failures double it up to
+    /// <see cref="InitialConnectionMaxRetryDelay"/>.
+    /// </summary>
+    public TimeSpan InitialConnectionRetryDelay { get; set; } = DefaultInitialConnectionRetryDelay;
+
+    /// <summary>
+    /// Upper bound for the exponential backoff applied to repeated initial connection failures. Must
+    /// be greater than or equal to <see cref="InitialConnectionRetryDelay"/>.
+    /// </summary>
+    public TimeSpan InitialConnectionMaxRetryDelay { get; set; } = DefaultInitialConnectionMaxRetryDelay;
 
     public RabbitMqSslOptions? Ssl { get; set; }
 }
