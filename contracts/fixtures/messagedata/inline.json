@@ -1,0 +1,51 @@
+[
+  {
+    "name": "text",
+    "address": "data:text/plain;base64,aGVsbG8=",
+    "outcome": "valid",
+    "hex": "68656c6c6f"
+  },
+  {
+    "name": "binary",
+    "address": "data:;base64,AAH+/w==",
+    "outcome": "valid",
+    "hex": "0001feff"
+  },
+  {
+    "name": "empty",
+    "address": "data:;base64,",
+    "outcome": "valid",
+    "hex": ""
+  },
+  {
+    "name": "case",
+    "address": "DATA:text/plain;BASE64,aGk=",
+    "outcome": "valid",
+    "hex": "6869"
+  },
+  {
+    "name": "bad-base64",
+    "address": "data:;base64,@@",
+    "outcome": "invalid"
+  },
+  {
+    "name": "percent-encoded",
+    "address": "data:;base64,aGk%3D",
+    "outcome": "invalid"
+  },
+  {
+    "name": "missing-marker",
+    "address": "data:text/plain,hello",
+    "outcome": "invalid"
+  },
+  {
+    "name": "partial-marker",
+    "address": "data:;xbase64,aGk=",
+    "outcome": "invalid"
+  },
+  {
+    "name": "missing-comma",
+    "address": "data:;base64",
+    "outcome": "invalid"
+  }
+]

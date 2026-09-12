@@ -39,7 +39,7 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
         _gzip = gzip;
     }
 
-    private static string NormalizeSchema(string schema)
+    internal static string NormalizeSchema(string schema)
     {
         var effectiveSchema = string.IsNullOrWhiteSpace(schema) ? DefaultSchema : schema;
         if (!IsSafeIdentifier(effectiveSchema))
@@ -47,20 +47,20 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
             throw new ArgumentException(ErrorMessages.SchemaInvalidCharacters, nameof(schema));
         }
 
-        // Lowercase to match the URI authority (Uri canonicalizes it) and unquoted SQL identifiers.
+        // Use one namespace for URI authorities and quoted SQL identifiers.
         return effectiveSchema.ToLowerInvariant();
     }
 
     private static bool IsSafeIdentifier(string value)
     {
-        if (string.IsNullOrEmpty(value))
+        if (string.IsNullOrEmpty(value) || value.Length > 63)
         {
             return false;
         }
 
         foreach (var c in value)
         {
-            if (!char.IsLetterOrDigit(c) && c != '_')
+            if (!char.IsAsciiLetterOrDigit(c) && c != '_')
             {
                 return false;
             }
@@ -76,9 +76,9 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
 
         var sql = $"""
 
-                   CREATE SCHEMA IF NOT EXISTS {_schema};
+                   CREATE SCHEMA IF NOT EXISTS {QuoteIdentifier(_schema)};
 
-                   CREATE TABLE IF NOT EXISTS {_schema}.files (
+                   CREATE TABLE IF NOT EXISTS {FilesTable(_schema)} (
                      id           uuid PRIMARY KEY,
                      created_at   timestamptz NOT NULL DEFAULT now(),
                      expire_at    timestamptz,
@@ -89,8 +89,8 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
                      sha256       text
                    );
 
-                   CREATE TABLE IF NOT EXISTS {_schema}.chunks (
-                     file_id  uuid NOT NULL REFERENCES {_schema}.files(id) ON DELETE CASCADE,
+                   CREATE TABLE IF NOT EXISTS {ChunksTable(_schema)} (
+                     file_id  uuid NOT NULL REFERENCES {FilesTable(_schema)}(id) ON DELETE CASCADE,
                      n        integer NOT NULL,
                      data     bytea   NOT NULL,
                      PRIMARY KEY (file_id, n)
@@ -105,13 +105,12 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
     {
         ArgumentNullException.ThrowIfNull(address);
 
-        if (!string.Equals(address.Scheme, Scheme, StringComparison.OrdinalIgnoreCase))
+        if (!address.IsAbsoluteUri || !string.Equals(address.Scheme, Scheme, StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException(ErrorMessages.UnsupportedUriScheme(address), nameof(address));
+            throw new ArgumentException(ErrorMessages.UnsupportedMessageDataUri(address), nameof(address));
         }
 
-        var (schema, bucket, id) = Parse(address);
-        EnsureAddressMatchesConfiguredRepository(schema, bucket);
+        var id = ParseAddress(address);
 
         var connection = new NpgsqlConnection(_connectionString);
         try
@@ -121,7 +120,7 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
             string? encoding;
             // Expired rows are treated as not-found, ahead of the cleanup sweep.
             await using (var headerCommand = new NpgsqlCommand(
-                $"SELECT encoding FROM {schema}.files WHERE id=@id AND (expire_at IS NULL OR expire_at > now());", connection))
+                $"SELECT encoding FROM {FilesTable(_schema)} WHERE id=@id AND (expire_at IS NULL OR expire_at > now());", connection))
             {
                 headerCommand.Parameters.AddWithValue("id", id);
                 var scalar = await headerCommand.ExecuteScalarAsync(cancellationToken);
@@ -133,7 +132,7 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
                 encoding = scalar == DBNull.Value ? null : (string?)scalar;
             }
 
-            var chunkStream = new DbChunkSourceStream(connection, ChunksTable(schema), id);
+            var chunkStream = new DbChunkSourceStream(connection, ChunksTable(_schema), id);
             Stream payloadStream = string.Equals(encoding, GzipEncoding, StringComparison.OrdinalIgnoreCase)
                 ? new GZipStream(chunkStream, CompressionMode.Decompress, leaveOpen: false)
                 : chunkStream;
@@ -160,7 +159,7 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         await using (var insertCommand = new NpgsqlCommand($@"
-            INSERT INTO {_schema}.files(id, created_at, expire_at, content_type, encoding, length, chunk_size)
+            INSERT INTO {FilesTable(_schema)}(id, created_at, expire_at, content_type, encoding, length, chunk_size)
             VALUES (@id, now(), @exp, @ct, @enc, 0, @cs);", connection, transaction))
         {
             insertCommand.Parameters.AddWithValue("id", id);
@@ -194,7 +193,7 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
             // length stores the decoded (plaintext) payload length per the wire-contract docs, even
             // when the rows are gzip-compressed. The Encoded byte total is implicit in the chunks.
             await using var updateCommand = new NpgsqlCommand($@"
-                UPDATE {_schema}.files SET length=@len, sha256=@s WHERE id=@id;", connection, transaction);
+                UPDATE {FilesTable(_schema)} SET length=@len, sha256=@s WHERE id=@id;", connection, transaction);
             updateCommand.Parameters.AddWithValue("len", plainLength);
             updateCommand.Parameters.AddWithValue("s", sha256Hex);
             updateCommand.Parameters.AddWithValue("id", id);
@@ -215,11 +214,15 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
         await connection.OpenAsync(cancellationToken);
 
         await using var command = new NpgsqlCommand(
-            $"DELETE FROM {_schema}.files WHERE expire_at IS NOT NULL AND expire_at < now();", connection);
+            $"DELETE FROM {FilesTable(_schema)} WHERE expire_at IS NOT NULL AND expire_at <= now();", connection);
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static string ChunksTable(string schema) => $"{schema}.chunks";
+    private static string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
+
+    private static string FilesTable(string schema) => $"{QuoteIdentifier(schema)}.\"files\"";
+
+    private static string ChunksTable(string schema) => $"{QuoteIdentifier(schema)}.\"chunks\"";
 
     private static async Task<long> CopyAndHashAsync(
         Stream source,
@@ -241,29 +244,20 @@ public sealed class PostgresMessageDataRepository : IMessageDataRepository
         return length;
     }
 
-    private static (string schema, string bucket, Guid id) Parse(Uri uri)
+    internal Guid ParseAddress(Uri uri)
     {
-        if (!string.IsNullOrEmpty(uri.UserInfo) ||
-            !uri.IsDefaultPort ||
-            !string.IsNullOrEmpty(uri.Query) ||
-            !string.IsNullOrEmpty(uri.Fragment))
+        ArgumentNullException.ThrowIfNull(uri);
+        // Use the original spelling so System.Uri normalization cannot hide dot segments or escapes.
+        var match = System.Text.RegularExpressions.Regex.Match(uri.OriginalString,
+            @"\A(?i:pgbin)://([A-Za-z0-9_]{1,63})/([A-Za-z0-9_]+)/([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\z");
+        if (!uri.IsAbsoluteUri || !match.Success)
         {
             throw new FormatException(ErrorMessages.InvalidLocator(uri));
         }
 
-        var schema = uri.Host;
-        if (!IsSafeIdentifier(schema))
-        {
-            throw new FormatException(ErrorMessages.InvalidLocatorUnsafeSchema(uri));
-        }
-
-        var segments = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length != 2 || !Guid.TryParse(segments[1], out var id))
-        {
-            throw new FormatException(ErrorMessages.InvalidLocator(uri));
-        }
-
-        return (schema, segments[0], id);
+        var schema = match.Groups[1].Value.ToLowerInvariant();
+        EnsureAddressMatchesConfiguredRepository(schema, match.Groups[2].Value);
+        return Guid.ParseExact(match.Groups[3].Value, "D");
     }
 
     private void EnsureAddressMatchesConfiguredRepository(string schema, string bucket)

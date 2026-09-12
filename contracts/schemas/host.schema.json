@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/host.schema.json",
+  "type": "object",
+  "properties": {
+    "machineName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "processName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conveyoVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "operatingSystemVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtimeVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

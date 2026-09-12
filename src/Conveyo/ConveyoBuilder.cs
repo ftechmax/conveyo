@@ -63,6 +63,12 @@ internal sealed class ConveyoBuilder(IServiceCollection services, ConveyoContext
 
     public void Map<T>(string urn) where T : class
     {
+        ConveyoContext.ValidateUrn(urn);
+        if (!IsFaultType(typeof(T)))
+        {
+            ConveyoContext.ValidateUrn(urn + ConveyoContext.FaultUrnSuffix);
+        }
+
         context.RegisterUrn(typeof(T), urn);
         if (!IsFaultType(typeof(T)))
         {

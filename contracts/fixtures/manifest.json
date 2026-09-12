@@ -1,0 +1,106 @@
+[
+  {
+    "file": "envelopes/headers.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "envelopes/message-data-inline.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "envelopes/message-data-pgbin.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "envelopes/message-type-two-urns.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "envelopes/plain-command.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "envelopes/plain-event-nested-list.json",
+    "schemas": [
+      "envelope"
+    ],
+    "valid": true,
+    "kind": "envelope"
+  },
+  {
+    "file": "payloads/types.json",
+    "schemas": [
+      "payload-example"
+    ],
+    "valid": true,
+    "kind": "payload"
+  },
+  {
+    "file": "payloads/fault.json",
+    "schemas": [
+      "fault"
+    ],
+    "valid": true,
+    "kind": "fault"
+  },
+  {
+    "file": "messagedata/postgres-locators.json",
+    "schemas": [
+      "postgres-locator-cases"
+    ],
+    "valid": true,
+    "kind": "postgres-locators"
+  },
+  {
+    "file": "messagedata/inline.json",
+    "schemas": [
+      "inline-cases"
+    ],
+    "valid": true,
+    "kind": "inline"
+  },
+  {
+    "file": "transport/rabbitmq.json",
+    "schemas": [
+      "transport"
+    ],
+    "valid": true,
+    "kind": "transport"
+  },
+  {
+    "file": "envelope-cases.json",
+    "schemas": [
+      "envelope-cases"
+    ],
+    "valid": true,
+    "kind": "envelope-cases"
+  },
+  {
+    "file": "messagedata/references.json",
+    "schemas": [
+      "reference-cases"
+    ],
+    "valid": true,
+    "kind": "reference-cases"
+  }
+]

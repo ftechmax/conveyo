@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/payload-example.schema.json",
+  "description": "Example application contract; numeric enum 0=temperature, 1=humidity.",
+  "type": "object",
+  "required": [
+    "sequence",
+    "amount",
+    "kind",
+    "note",
+    "readings",
+    "binary"
+  ],
+  "properties": {
+    "sequence": {
+      "type": "integer",
+      "minimum": -9223372036854775808,
+      "maximum": 9223372036854775807
+    },
+    "amount": {
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        0,
+        1
+      ]
+    },
+    "note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "readings": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "binary": {
+      "type": "string",
+      "contentEncoding": "base64"
+    }
+  },
+  "additionalProperties": true
+}

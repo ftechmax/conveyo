@@ -109,6 +109,18 @@ public class ConveyoBuilderTests
     }
 
     [Test]
+    public void Map_ValidatesDerivedFaultUrnBeforeRegistering()
+    {
+        var context = new ConveyoContext { HostInfo = new HostInfo() };
+        var builder = new ConveyoBuilder(new ServiceCollection(), context);
+        builder.Map<OrderPlaced>(new string('a', 249));
+        Assert.That(context.UrnFor(typeof(Fault<OrderPlaced>)).Length, Is.EqualTo(255));
+        Assert.Throws<ArgumentException>(() => builder.Map<OrderPlaced>(new string('b', 250)));
+        Assert.That(context.UrnFor(typeof(OrderPlaced)), Is.EqualTo(new string('a', 249)));
+        Assert.That(context.UrnFor(typeof(Fault<OrderPlaced>)), Is.EqualTo(new string('a', 249) + ".fault"));
+    }
+
+    [Test]
     public void Map_ThrowsWhenUrnCollidesWithDifferentType()
     {
         var services = new ServiceCollection();

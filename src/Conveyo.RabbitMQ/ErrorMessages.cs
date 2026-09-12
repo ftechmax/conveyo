@@ -15,7 +15,7 @@ internal static class ErrorMessages
     public const string MessageEnvelopeDeserializedToNull = "Message envelope deserialized to null.";
     public const string MissingEnvelopeVersion = "Envelope missing required 'envelopeVersion'.";
     public const string MissingMessageType = "Envelope missing required 'messageType' or contains empty URNs.";
-    public const string MissingMessage = "Envelope missing required 'message' or value null.";
+    public const string MissingMessage = "Envelope 'message' must be a non-null JSON object.";
     public const string EnvelopeExceededByteLimit = "Message envelope exceeded configured byte limit.";
 
     public static string NoHandlerFoundForMessageType(Type messageType) =>

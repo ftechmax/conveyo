@@ -1,8 +1,8 @@
 # MessageData
 
-`MessageData<T>` lets a message carry a URI for a payload stored outside the Conveyo envelope. Use it for payloads that are too large for normal message bodies: files, binary blobs, CSV exports, compressed feeds, and similar data.
+`MessageData<T>` carries a payload URI. Use it for large files, CSV exports, or compressed feeds stored outside the message body.
 
-The envelope contains only:
+A `MessageData<T>` property appears in the envelope as:
 
 ```json
 {
@@ -14,7 +14,7 @@ The payload bytes live in a repository such as Postgres.
 
 ## Supported Payload Types
 
-Conveyo hydrates these `MessageData<T>` item types on the consumer side:
+Conveyo loads referenced payloads during consumer hydration:
 
 | Type | Hydration behavior |
 | --- | --- |
@@ -40,11 +40,8 @@ services.AddConveyo(bus =>
 });
 ```
 
-The storage package registers:
-
-- A concrete repository.
-- `IMessageDataRepository`.
-- A hosted service that ensures the storage schema exists at startup.
+The storage package registers the Postgres repository, `IMessageDataRepository`,
+and a hosted service that creates the storage schema at startup if needed.
 
 ## Configuration Binding
 
@@ -109,7 +106,7 @@ The repository stores raw bytes. Conveyo does not add JSON framing when you call
 
 ## Consume a MessageData Payload
 
-On delivery, Conveyo sees the `MessageData<T>` property, reads the referenced payload, and replaces the property value with a hydrated instance.
+On delivery, Conveyo loads the referenced payload and assigns a hydrated instance to the `MessageData<T>` property.
 
 ```csharp
 public sealed class RadarImageConsumer : IConsumer<UploadRadarImageCommand>
@@ -167,4 +164,4 @@ Storage backends emit canonical URI schemes:
 | Inline payload | `data` | `data:text/plain;base64,U21hbGwgcGF5bG9hZA==` |
 | Postgres chunks | `pgbin` | `pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111` |
 
-The full grammar and cross-language resolver rules live in [MessageData URI schemes](messagedata-uris.md).
+See the grammar and cross-language resolver rules in [MessageData URI schemes](messagedata-uris.md).

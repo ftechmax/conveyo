@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/postgres-locator-cases.schema.json",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": [
+      "name",
+      "address",
+      "schema",
+      "outcome"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "address": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "outcome": {
+        "enum": [
+          "valid",
+          "invalid",
+          "namespace"
+        ]
+      },
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "additionalProperties": false
+  }
+}

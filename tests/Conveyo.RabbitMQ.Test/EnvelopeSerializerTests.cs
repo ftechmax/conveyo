@@ -127,6 +127,14 @@ public class EnvelopeSerializerTests
     }
 
     [Test]
+    public void Create_RejectsNonObjectPayloads()
+    {
+        Assert.Throws<EnvelopeDeserializationException>(() => EnvelopeSerializer.Create("text", new HostInfo(), SampleUrn));
+        Assert.Throws<EnvelopeDeserializationException>(() => EnvelopeSerializer.Create(new[] { 1, 2 }, new HostInfo(), SampleUrn));
+        Assert.Throws<EnvelopeDeserializationException>(() => EnvelopeSerializer.Create<SampleMessage>(null!, new HostInfo(), SampleUrn));
+    }
+
+    [Test]
     public void Serialize_IsNotIndented()
     {
         var envelope = EnvelopeSerializer.Create(new SampleMessage("x", 1), new HostInfo(), SampleUrn);

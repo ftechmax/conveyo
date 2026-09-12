@@ -10,9 +10,6 @@ public class RabbitMqSendEndpointIntegrationTests
 {
     private sealed record IntegrationMessage(string Value);
 
-    [SetUp]
-    public void SetUp() => BrokerFixture.SkipIfBrokerMissing();
-
     [Test]
     public async Task Send_ToMissingQueue_ThrowsUnroutableMessageException()
     {

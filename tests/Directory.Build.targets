@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <VSTestTestCaseFilter Condition="'$(VSTestTestCaseFilter)' == ''">TestCategory!=Integration</VSTestTestCaseFilter>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)Shared/SharedContracts.cs" Link="SharedContracts.cs" />
+    <None Include="$(MSBuildThisFileDirectory)../contracts/fixtures/**/*.json"
+          Link="contracts/fixtures/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

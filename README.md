@@ -1,17 +1,15 @@
 # Conveyo
 
 > [!NOTE]
-> Conveyo is pre-1.0. It is published as preview packages (`0.1.0-preview.N`) so the API can harden through real use. The public API and the JSON/RabbitMQ wire contract may change before 1.0; wire-contract changes are called out in the release notes. I run it in my own services first. Feedback and issues are welcome.
+> Conveyo is pre-1.0. Preview packages use versions such as `0.1.0-preview.N`. The public API and the JSON/RabbitMQ wire contract may change before 1.0; wire-contract changes are listed in the [release notes](docs/release-notes.md). I run it in my own services first. Feedback and issues are welcome.
 
-Conveyo helps you build event-driven .NET applications without tying your application code to a broker client. Define messages, write consumers, and use one bus abstraction to send commands, publish events, and pass large payloads by reference.
-
-The bits you interact with is minimalistic by design:
+Conveyo is a .NET messaging library for sending commands, publishing events, and passing large payloads by reference. Application code uses its bus and consumer interfaces:
 
 - `Send<T>` routes a command to one queue.
 - `Publish<T>` emits an event to zero, one, or many queues.
-- `IConsumer<T>` handles messages inside normal .NET dependency-injection scopes.
+- `IConsumer<T>` handles messages inside .NET dependency-injection scopes.
 
-For transport and blob storage there are additional packages:
+RabbitMQ transport and Postgres payload storage are separate packages:
 
 | Package | Use it for |
 | --- | --- |
@@ -130,9 +128,11 @@ public sealed class WeatherStationClient(IBus bus)
 
 ## Documentation
 
+- [Testing](docs/testing.md): unit tests, integration tests, and local container runtime setup.
 - [Getting started](docs/getting-started.md): registration, consumers, command routing, and events.
 - [RabbitMQ transport](docs/rabbitmq.md): host options, TLS, topology, retries, and failure queues.
 - [MessageData](docs/messagedata.md): storing large payloads outside the envelope.
+- [Shared contracts](contracts/README.md): schemas, fixtures, evolution rules, and conformance checks.
 - [Wire contract](docs/wire-contract.md): JSON envelope and RabbitMQ wire shape for non-.NET clients.
 - [MessageData URI schemes](docs/messagedata-uris.md): `data:` and `pgbin://` resolver contracts.
 

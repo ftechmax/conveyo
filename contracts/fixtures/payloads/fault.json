@@ -1,0 +1,29 @@
+{
+  "faultId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "faultedMessageId": "11111111-2222-3333-4444-555555555555",
+  "timestamp": "2026-05-14T12:34:56.789Z",
+  "exceptions": [
+    {
+      "exceptionType": "System.InvalidOperationException",
+      "message": "Exception details redacted.",
+      "stackTrace": null,
+      "innerException": null
+    }
+  ],
+  "host": {
+    "machineName": "golden-host",
+    "runtime": "dotnet"
+  },
+  "message": {
+    "sequence": 9223372036854775807,
+    "amount": 1234567890.125,
+    "kind": 1,
+    "note": null,
+    "readings": [
+      1,
+      2.5,
+      -3
+    ],
+    "binary": "AAH+/w=="
+  }
+}

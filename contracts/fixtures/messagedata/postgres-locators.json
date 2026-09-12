@@ -1,0 +1,170 @@
+[
+  {
+    "name": "canonical",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "case-insensitive-authority",
+    "address": "PGBIN://MD/files/0194AD8F-61A2-7F28-9001-111111111111",
+    "schema": "MD",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "underscore",
+    "address": "pgbin://message_data/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "message_data",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "digit-schema",
+    "address": "pgbin://123/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "123",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "reserved-schema",
+    "address": "pgbin://select/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "select",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "max-schema",
+    "address": "pgbin://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outcome": "valid",
+    "id": "0194ad8f-61a2-7f28-9001-111111111111"
+  },
+  {
+    "name": "wrong-namespace",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "other",
+    "outcome": "namespace"
+  },
+  {
+    "name": "wrong-table",
+    "address": "pgbin://md/chunks/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "namespace"
+  },
+  {
+    "name": "extra-segment",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111/extra",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "trailing-slash",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111/",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "empty-segment",
+    "address": "pgbin://md//files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "query",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111?read=1",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "empty-query",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111?",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "fragment",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111#x",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "userinfo",
+    "address": "pgbin://user@md/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "port",
+    "address": "pgbin://md:5432/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "compact-uuid",
+    "address": "pgbin://md/files/0194ad8f61a27f289001111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "braced-uuid",
+    "address": "pgbin://md/files/{0194ad8f-61a2-7f28-9001-111111111111}",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "invalid-uuid",
+    "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-11111111111x",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "dot-segment",
+    "address": "pgbin://md/other/../files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "escaped-path",
+    "address": "pgbin://md/%66iles/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "unicode-schema",
+    "address": "pgbin://méd/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "long-schema",
+    "address": "pgbin://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "hyphen-schema",
+    "address": "pgbin://my-data/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "relative",
+    "address": "files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "wrong-scheme",
+    "address": "https://md/files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "invalid"
+  },
+  {
+    "name": "upper-bucket",
+    "address": "pgbin://md/Files/0194ad8f-61a2-7f28-9001-111111111111",
+    "schema": "md",
+    "outcome": "namespace"
+  }
+]

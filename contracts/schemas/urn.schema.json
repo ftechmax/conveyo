@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/urn.schema.json",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9._:\\-]+$(?![\\s\\S])"
+}

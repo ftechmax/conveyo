@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/inline-cases.schema.json",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": [
+      "name",
+      "address",
+      "outcome"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "address": {
+        "type": "string"
+      },
+      "outcome": {
+        "enum": [
+          "valid",
+          "invalid"
+        ]
+      },
+      "hex": {
+        "type": "string",
+        "pattern": "^[0-9a-f]*$"
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -11,8 +11,7 @@ public class RabbitMqInitialConnectionIntegrationTests
     [Test]
     public async Task StartAsync_Connects_WhenTheBrokerAppearsLate()
     {
-        BrokerFixture.SkipIfBrokerMissing();
-        var broker = BrokerFixture.TryGetOptions("late-broker")!;
+        var broker = BrokerFixture.GetOptions("late-broker");
 
         // Point the bus at a port nothing is listening on yet, then start forwarding to the real broker after a delay.
         using var forwarder = new DelayedForwarder(broker.Host, broker.Port);

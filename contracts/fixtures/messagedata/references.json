@@ -1,0 +1,47 @@
+[
+  {
+    "name": "reference-inline",
+    "valid": true,
+    "value": {
+      "address": "data:;base64,AAH+/w=="
+    }
+  },
+  {
+    "name": "reference-postgres",
+    "valid": true,
+    "value": {
+      "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111"
+    }
+  },
+  {
+    "name": "reference-0",
+    "valid": false,
+    "value": {}
+  },
+  {
+    "name": "reference-1",
+    "valid": false,
+    "value": {
+      "address": null
+    }
+  },
+  {
+    "name": "reference-2",
+    "valid": false,
+    "value": {
+      "address": ""
+    }
+  },
+  {
+    "name": "reference-3",
+    "valid": false,
+    "value": {
+      "address": "relative"
+    }
+  },
+  {
+    "name": "reference-4",
+    "valid": false,
+    "value": "data:;base64,"
+  }
+]

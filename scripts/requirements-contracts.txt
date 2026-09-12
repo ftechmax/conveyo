@@ -1,0 +1,2 @@
+# Test-only JSON Schema validation, including UUID, URI and RFC 3339 formats.
+jsonschema[format]==4.26.0

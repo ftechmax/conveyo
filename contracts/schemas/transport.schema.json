@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/transport.schema.json",
+  "type": "object",
+  "required": [
+    "envelope",
+    "queue",
+    "properties",
+    "publish",
+    "send",
+    "trace"
+  ],
+  "properties": {
+    "envelope": {
+      "type": "string"
+    },
+    "queue": {
+      "type": "string"
+    },
+    "properties": {
+      "type": "object",
+      "required": [
+        "contentType",
+        "deliveryMode",
+        "messageId",
+        "correlationId",
+        "type",
+        "timestamp",
+        "headers"
+      ],
+      "properties": {
+        "contentType": {
+          "const": "application/json"
+        },
+        "deliveryMode": {
+          "const": 2
+        },
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "correlationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "type": {
+          "$ref": "https://github.com/ftechmax/conveyo/contracts/schemas/urn.schema.json"
+        },
+        "timestamp": {
+          "type": "integer"
+        },
+        "headers": {
+          "type": "object",
+          "required": [
+            "conveyo-version"
+          ],
+          "properties": {
+            "conveyo-version": {
+              "const": "1"
+            }
+          }
+        }
+      }
+    },
+    "publish": {
+      "$ref": "#/$defs/route"
+    },
+    "send": {
+      "$ref": "#/$defs/route"
+    },
+    "trace": {
+      "type": "object",
+      "required": [
+        "traceparent",
+        "tracestate"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "route": {
+      "type": "object",
+      "required": [
+        "exchange",
+        "routingKey",
+        "mandatory"
+      ],
+      "properties": {
+        "exchange": {
+          "type": "string"
+        },
+        "routingKey": {
+          "type": "string"
+        },
+        "mandatory": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

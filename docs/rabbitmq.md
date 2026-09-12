@@ -1,6 +1,6 @@
 # RabbitMQ Transport
 
-`Conveyo.RabbitMQ` is the RabbitMQ transport for Conveyo. It owns connection management, topology declaration, send and publish endpoints, retry handling, and the `_error` and `_skipped` queues.
+`Conveyo.RabbitMQ` manages broker connections, declares exchanges and queues, sends and publishes messages, and handles retries and `_error`/`_skipped` routing.
 
 ## Registration
 
@@ -30,7 +30,7 @@ services.AddConveyo(bus =>
 
 ## Host Options
 
-Host configuration is done inside `rabbit.Host`.
+Configure the host inside `rabbit.Host`:
 
 ```csharp
 rabbit.Host("rabbitmq.internal", "/", host =>
@@ -62,7 +62,7 @@ rabbit.Host("rabbitmq.internal", "/", host =>
 | `InitialConnectionRetryDelay` | `2s` | Delay before the first retry of that connection, doubling on each failure. |
 | `InitialConnectionMaxRetryDelay` | `30s` | Ceiling for that backoff. |
 
-Automatic recovery covers a connection that has been established once; the client does not retry the first one. Conveyo does, so a broker that is still starting, or a user an operator has not provisioned yet, results in a wait rather than a failed host start. Every attempt is logged at `Warning`; when the timeout is spent the last exception propagates and startup fails as it would without the retry.
+RabbitMQ client recovery applies after the first successful connection. Conveyo retries the initial connection until `InitialConnectionTimeout` expires, allowing time for broker startup or user provisioning. Every attempt is logged at `Warning`. When the timeout expires, startup fails with the last exception.
 
 ## TLS
 
@@ -77,9 +77,9 @@ rabbit.Host("rabbitmq.internal", "/", host =>
 });
 ```
 
-The SSL configurator exposes the underlying .NET TLS knobs:
+The SSL configurator exposes these .NET TLS options:
 
-| Knob | Purpose |
+| Option | Purpose |
 | --- | --- |
 | `ServerName` | Override SNI and certificate name matching. Defaults to the host name. |
 | `Protocol` | Pin an `SslProtocols` value. The default lets the OS choose. |
@@ -157,7 +157,7 @@ Messages that deserialize but have no matching registered consumer are published
 
 ## Fault Messages
 
-Conveyo also supports `Fault<T>` side-channel events. When a consumed message fails and the original message type is mapped, Conveyo can publish a `Fault<T>` envelope with fault metadata. Fault exception details are redacted by default.
+When a consumed message fails and the original message type is mapped, Conveyo can also publish a `Fault<T>` event with fault metadata. Fault exception details are redacted by default.
 
 For local debugging:
 
@@ -182,4 +182,4 @@ Do not enable exception detail output on brokers where stack traces or exception
 
 ## Wire Contract
 
-The exact JSON envelope, AMQP properties, topology rules, and cross-language requirements live in [the wire contract](wire-contract.md).
+See the JSON envelope, AMQP properties, topology rules, and cross-language requirements in [the wire contract](wire-contract.md).

@@ -1,0 +1,350 @@
+{
+  "template": {
+    "envelopeVersion": "1",
+    "messageType": [
+      "example:payload.v1"
+    ],
+    "message": {}
+  },
+  "cases": [
+    {
+      "name": "minimal",
+      "valid": true
+    },
+    {
+      "name": "unknown-fields",
+      "valid": true,
+      "set": {
+        "future": {
+          "enabled": true
+        },
+        "host": {
+          "runtime": "other",
+          "future": 42
+        }
+      }
+    },
+    {
+      "name": "payload-types",
+      "valid": true,
+      "set": {},
+      "messageFile": "payloads/types.json"
+    },
+    {
+      "name": "fault",
+      "valid": true,
+      "set": {
+        "messageType": [
+          "example:payload.v1.fault"
+        ]
+      },
+      "messageFile": "payloads/fault.json"
+    },
+    {
+      "name": "envelopeVersion-0",
+      "valid": false,
+      "set": {
+        "envelopeVersion": null
+      }
+    },
+    {
+      "name": "envelopeVersion-1",
+      "valid": false,
+      "set": {
+        "envelopeVersion": ""
+      }
+    },
+    {
+      "name": "envelopeVersion-2",
+      "valid": false,
+      "set": {
+        "envelopeVersion": "2"
+      }
+    },
+    {
+      "name": "envelopeVersion-3",
+      "valid": false,
+      "set": {
+        "envelopeVersion": 1
+      }
+    },
+    {
+      "name": "messageType-0",
+      "valid": false,
+      "set": {
+        "messageType": null
+      }
+    },
+    {
+      "name": "messageType-1",
+      "valid": false,
+      "set": {
+        "messageType": []
+      }
+    },
+    {
+      "name": "messageType-2",
+      "valid": false,
+      "set": {
+        "messageType": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "messageType-3",
+      "valid": false,
+      "set": {
+        "messageType": [
+          null
+        ]
+      }
+    },
+    {
+      "name": "messageType-4",
+      "valid": false,
+      "set": {
+        "messageType": [
+          "bad urn"
+        ]
+      }
+    },
+    {
+      "name": "messageType-5",
+      "valid": false,
+      "set": {
+        "messageType": [
+          "\u00e9"
+        ]
+      }
+    },
+    {
+      "name": "messageType-6",
+      "valid": false,
+      "set": {
+        "messageType": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      }
+    },
+    {
+      "name": "messageType-7",
+      "valid": false,
+      "set": {
+        "messageType": [
+          "urn\n"
+        ]
+      }
+    },
+    {
+      "name": "message-0",
+      "valid": false,
+      "set": {
+        "message": null
+      }
+    },
+    {
+      "name": "message-1",
+      "valid": false,
+      "set": {
+        "message": []
+      }
+    },
+    {
+      "name": "message-2",
+      "valid": false,
+      "set": {
+        "message": 1
+      }
+    },
+    {
+      "name": "message-3",
+      "valid": false,
+      "set": {
+        "message": "text"
+      }
+    },
+    {
+      "name": "message-4",
+      "valid": false,
+      "set": {
+        "message": true
+      }
+    },
+    {
+      "name": "messageId-0",
+      "valid": false,
+      "set": {
+        "messageId": "not-uuid"
+      }
+    },
+    {
+      "name": "messageId-1",
+      "valid": false,
+      "set": {
+        "messageId": 42
+      }
+    },
+    {
+      "name": "correlationId-0",
+      "valid": false,
+      "set": {
+        "correlationId": "123"
+      }
+    },
+    {
+      "name": "sentTime-0",
+      "valid": false,
+      "set": {
+        "sentTime": "yesterday"
+      }
+    },
+    {
+      "name": "sentTime-1",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-02-30T00:00:00Z"
+      }
+    },
+    {
+      "name": "sentTime-2",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56"
+      }
+    },
+    {
+      "name": "sentTime-3",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56+02:00"
+      }
+    },
+    {
+      "name": "headers-0",
+      "valid": false,
+      "set": {
+        "headers": {
+          "a": null
+        }
+      }
+    },
+    {
+      "name": "headers-1",
+      "valid": false,
+      "set": {
+        "headers": {
+          "a": 1
+        }
+      }
+    },
+    {
+      "name": "host-0",
+      "valid": false,
+      "set": {
+        "host": "host"
+      }
+    },
+    {
+      "name": "destinationAddress-0",
+      "valid": false,
+      "set": {
+        "destinationAddress": "relative"
+      }
+    },
+    {
+      "name": "missing-envelopeVersion",
+      "valid": false,
+      "remove": [
+        "envelopeVersion"
+      ]
+    },
+    {
+      "name": "missing-messageType",
+      "valid": false,
+      "remove": [
+        "messageType"
+      ]
+    },
+    {
+      "name": "missing-message",
+      "valid": false,
+      "remove": [
+        "message"
+      ]
+    },
+    {
+      "name": "null-envelope",
+      "valid": false,
+      "root": null
+    },
+    {
+      "name": "array-envelope",
+      "valid": false,
+      "root": []
+    },
+    {
+      "name": "sentTime-whole-seconds",
+      "valid": true,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56Z"
+      }
+    },
+    {
+      "name": "sentTime-one-fractional-digit",
+      "valid": true,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56.1Z"
+      }
+    },
+    {
+      "name": "sentTime-seven-fractional-digits",
+      "valid": true,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56.1234567Z"
+      }
+    },
+    {
+      "name": "sentTime-nine-fractional-digits",
+      "valid": true,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56.123456789Z"
+      }
+    },
+    {
+      "name": "sentTime-sixteen-fractional-digits",
+      "valid": true,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56.1234567890123456Z"
+      }
+    },
+    {
+      "name": "sentTime-seventeen-fractional-digits",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56.12345678901234567Z"
+      }
+    },
+    {
+      "name": "sentTime-lowercase-t",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14t12:34:56Z"
+      }
+    },
+    {
+      "name": "sentTime-lowercase-z",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56z"
+      }
+    },
+    {
+      "name": "sentTime-trailing-newline",
+      "valid": false,
+      "set": {
+        "sentTime": "2026-05-14T12:34:56Z\n"
+      }
+    }
+  ]
+}

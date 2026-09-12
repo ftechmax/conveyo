@@ -90,7 +90,7 @@ internal class EnvelopeGoldenTests
         var goldenPath = GoldenPath(goldenFileName);
 
         var expected = NormalizeLineEndings(File.ReadAllText(goldenPath, Encoding.UTF8));
-        if (actual == expected)
+        if (JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(expected)))
         {
             return;
         }
@@ -134,8 +134,7 @@ internal class EnvelopeGoldenTests
 
     private static string GoldenPath(string goldenFileName)
     {
-        var testDirectory = TestContext.CurrentContext.TestDirectory;
-        return Path.GetFullPath(Path.Combine(testDirectory, "..", "..", "..", "GoldenEnvelopes", goldenFileName));
+        return SharedContracts.PathFor("fixtures/envelopes/" + goldenFileName);
     }
 
     private static string BuildFailureMessage(string goldenFileName, string expected, string actual)

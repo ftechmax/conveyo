@@ -1,0 +1,29 @@
+{
+  "envelope": "envelopes/plain-command.json",
+  "queue": "weather",
+  "properties": {
+    "contentType": "application/json",
+    "deliveryMode": 2,
+    "messageId": "11111111-2222-3333-4444-555555555555",
+    "correlationId": "33333333-4444-5555-6666-777777777777",
+    "type": "conveyo:golden.submit-invoice.v1",
+    "timestamp": 1778762096,
+    "headers": {
+      "conveyo-version": "1"
+    }
+  },
+  "publish": {
+    "exchange": "conveyo:golden.submit-invoice.v1",
+    "routingKey": "",
+    "mandatory": false
+  },
+  "send": {
+    "exchange": "",
+    "routingKey": "weather",
+    "mandatory": true
+  },
+  "trace": {
+    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    "tracestate": "vendor=value"
+  }
+}

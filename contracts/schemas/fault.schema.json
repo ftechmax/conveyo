@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/fault.schema.json",
+  "type": "object",
+  "required": [
+    "faultId",
+    "faultedMessageId",
+    "timestamp",
+    "exceptions",
+    "host",
+    "message"
+  ],
+  "properties": {
+    "faultId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "faultedMessageId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,16})?Z$(?![\\s\\S])"
+    },
+    "exceptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/exception"
+      }
+    },
+    "host": {
+      "$ref": "https://github.com/ftechmax/conveyo/contracts/schemas/host.schema.json"
+    },
+    "message": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "exception": {
+      "type": "object",
+      "required": [
+        "exceptionType",
+        "message"
+      ],
+      "properties": {
+        "exceptionType": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "stackTrace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "innerException": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/exception"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

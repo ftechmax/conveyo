@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/envelope-cases.schema.json",
+  "type": "object",
+  "required": [
+    "template",
+    "cases"
+  ],
+  "properties": {
+    "template": {
+      "$ref": "https://github.com/ftechmax/conveyo/contracts/schemas/envelope.schema.json"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "valid"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "set": {
+            "type": "object"
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "root": {},
+          "messageFile": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

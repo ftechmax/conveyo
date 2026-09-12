@@ -1,57 +1,62 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
+using Testcontainers.RabbitMq;
 
 namespace Conveyo.RabbitMQ.Test.Integration;
 
 /// <summary>
-/// Resolves RabbitMQ broker connection details from environment variables and skips integration
-/// tests when no broker is configured. This lets CI run the same tests against a real broker
-/// container while keeping developer-local <c>dotnet test</c> runs hermetic.
+/// Shares one broker across this namespace. Create it during setup so test discovery
+/// does not require a container runtime.
 /// </summary>
-internal static class BrokerFixture
+[SetUpFixture]
+public sealed class BrokerFixture
 {
-    public const string HostEnvVar = "CONVEYO_RABBITMQ_HOST";
-    public const string PortEnvVar = "CONVEYO_RABBITMQ_PORT";
-    public const string UserEnvVar = "CONVEYO_RABBITMQ_USER";
-    public const string PassEnvVar = "CONVEYO_RABBITMQ_PASS";
-    public const string VHostEnvVar = "CONVEYO_RABBITMQ_VHOST";
+    private static RabbitMqContainer? _container;
 
-    public static RabbitMqHostOptions? TryGetOptions(string clientNameSuffix)
+    [OneTimeSetUp]
+    public async Task StartAsync()
     {
-        var host = Environment.GetEnvironmentVariable(HostEnvVar);
-        if (string.IsNullOrWhiteSpace(host))
+        _container = new RabbitMqBuilder("rabbitmq:4.3.0-management").Build();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try
         {
-            return null;
+            await _container.StartAsync(timeout.Token);
         }
+        catch
+        {
+            await StopAsync();
+            throw;
+        }
+    }
 
-        var port = int.TryParse(Environment.GetEnvironmentVariable(PortEnvVar), out var p) ? p : 5672;
-        var user = Environment.GetEnvironmentVariable(UserEnvVar) ?? "guest";
-        var pass = Environment.GetEnvironmentVariable(PassEnvVar) ?? "guest";
-        var vhost = Environment.GetEnvironmentVariable(VHostEnvVar) ?? "/";
+    [OneTimeTearDown]
+    public async Task StopAsync()
+    {
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+            _container = null;
+        }
+    }
 
+    internal static RabbitMqHostOptions GetOptions(string clientNameSuffix)
+    {
+        var container = _container ?? throw new InvalidOperationException("RabbitMQ fixture has not started.");
+        var connection = new ConnectionFactory { Uri = new Uri(container.GetConnectionString()) };
         return new RabbitMqHostOptions
         {
             ClientName = $"Conveyo.IntegrationTests/{clientNameSuffix}",
-            Host = host,
-            Port = port,
-            VHost = vhost,
-            Username = user,
-            Password = pass
+            Host = connection.HostName,
+            Port = connection.Port,
+            VHost = connection.VirtualHost,
+            Username = connection.UserName,
+            Password = connection.Password
         };
     }
 
-    public static void SkipIfBrokerMissing()
+    internal static async Task<RabbitMqConnectionManager> StartConnectionAsync(string clientNameSuffix, ushort prefetchCount = 16, CancellationToken cancellationToken = default)
     {
-        if (TryGetOptions("probe") is null)
-        {
-            Assert.Ignore($"Skipping RabbitMQ integration test: set {HostEnvVar} (and optionally {PortEnvVar}/{UserEnvVar}/{PassEnvVar}/{VHostEnvVar}) to enable.");
-        }
-    }
-
-    public static async Task<RabbitMqConnectionManager> StartConnectionAsync(string clientNameSuffix, ushort prefetchCount = 16, CancellationToken cancellationToken = default)
-    {
-        var options = TryGetOptions(clientNameSuffix)
-            ?? throw new InvalidOperationException("Broker options unavailable; call SkipIfBrokerMissing first.");
+        var options = GetOptions(clientNameSuffix);
         options.PrefetchCount = prefetchCount;
         var manager = new RabbitMqConnectionManager(NullLogger.Instance);
         await manager.StartAsync(options, cancellationToken);
@@ -64,7 +69,7 @@ internal static class BrokerFixture
         await channel.QueueDeclareAsync(
             queue: queue,
             durable: false,
-            exclusive: false,
+            exclusive: true,
             autoDelete: true,
             arguments: null,
             cancellationToken: cancellationToken);

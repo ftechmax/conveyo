@@ -1,6 +1,6 @@
 # Getting Started
 
-A Conveyo application is built from messages, consumers, and a transport. Register it with `AddConveyo`, map every message type to a stable URN, add consumers, then choose where those messages move.
+Register Conveyo with `AddConveyo`, map message types to stable URNs, add consumers, and configure a transport and receive queues.
 
 ## Install
 
@@ -17,7 +17,7 @@ dotnet add package Conveyo.Storage.Postgres
 
 ## Messages
 
-Messages are plain reference types. Records work well because Conveyo serializes the payload as JSON inside its envelope.
+Messages are plain reference types, such as the records below. Conveyo serializes them as JSON inside its envelope.
 
 ```csharp
 public sealed record SubmitWeatherObservationCommand
@@ -57,7 +57,7 @@ A consumed message type must be mapped. `AddConveyo` throws during startup if a 
 
 ## Consumers
 
-Consumers implement `IConsumer<T>`. They are registered as scoped services, so constructor injection works as expected.
+Consumers implement `IConsumer<T>`. Conveyo registers them as scoped services with constructor injection.
 
 ```csharp
 public sealed class SubmitWeatherObservationConsumer(IWeatherService weather)
@@ -105,7 +105,7 @@ bus.Map<SubmitWeatherObservationCommand>("weather:SubmitWeatherObservationComman
 bus.MapEndpointConvention<SubmitWeatherObservationCommand>(new Uri("queue:weather-stations"));
 ```
 
-`IBus.Send<T>` publishes to the RabbitMQ default exchange with `mandatory=true`. If the target queue does not exist, Conveyo throws `UnroutableMessageException`. This is intentional: commands should fail loudly when no handler queue has been provisioned.
+`IBus.Send<T>` publishes to the RabbitMQ default exchange with `mandatory=true`. If the target queue does not exist, Conveyo throws `UnroutableMessageException`. Provision the target queue before sending commands.
 
 ## Events
 

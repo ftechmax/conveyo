@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ftechmax/conveyo/contracts/schemas/reference.schema.json",
+  "type": "object",
+  "required": [
+    "address"
+  ],
+  "properties": {
+    "address": {
+      "type": "string",
+      "format": "uri",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}
