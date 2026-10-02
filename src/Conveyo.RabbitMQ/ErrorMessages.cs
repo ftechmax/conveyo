@@ -5,6 +5,8 @@ internal static class ErrorMessages
     public const string HostNotConfigured = "RabbitMQ host not configured. Call cfg.Host(...).";
     public const string ChannelNotInitialized = "Channel not initialized.";
     public const string ConnectionNotInitialized = "RabbitMQ connection not initialized.";
+    public const string ConnectionAlreadyStarted = "RabbitMQ connection is already started.";
+    public const string BusAlreadyStarted = "RabbitMQ bus is already started.";
     public const string RetryCountCannotBeNegative = "Retry count cannot be negative.";
     public const string InitialConnectionTimeoutCannotBeNegative = "Initial connection timeout cannot be negative.";
     public const string InitialConnectionRetryDelayMustBePositive = "Initial connection retry delay must be positive.";
@@ -15,7 +17,7 @@ internal static class ErrorMessages
     public const string MessageEnvelopeDeserializedToNull = "Message envelope deserialized to null.";
     public const string MissingEnvelopeVersion = "Envelope missing required 'envelopeVersion'.";
     public const string MissingMessageType = "Envelope missing required 'messageType' or contains empty URNs.";
-    public const string MissingMessage = "Envelope missing required 'message' or value null.";
+    public const string MissingMessage = "Envelope 'message' must be a non-null JSON object.";
     public const string EnvelopeExceededByteLimit = "Message envelope exceeded configured byte limit.";
 
     public static string NoHandlerFoundForMessageType(Type messageType) =>

@@ -36,7 +36,7 @@ internal static class EnvelopeSerializer
 
         var outbound = OutboundContext.Current;
 
-        return new MessageEnvelope
+        var envelope = new MessageEnvelope
         {
             MessageId = Guid.NewGuid(),
             CorrelationId = outbound?.CorrelationId,
@@ -46,6 +46,8 @@ internal static class EnvelopeSerializer
             Host = hostInfo,
             Headers = CopyHeaders(outbound?.Headers)
         };
+        ValidateContract(envelope);
+        return envelope;
     }
 
     private static Dictionary<string, string>? CopyHeaders(IReadOnlyDictionary<string, string>? source)
@@ -82,8 +84,34 @@ internal static class EnvelopeSerializer
             throw new EnvelopeDeserializationException(ErrorMessages.MissingMessageType);
         }
 
-        if (envelope.Message.ValueKind == JsonValueKind.Undefined
-            || envelope.Message.ValueKind == JsonValueKind.Null)
+        try
+        {
+            foreach (var urn in envelope.MessageType)
+            {
+                ConveyoContext.ValidateUrn(urn);
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            throw new EnvelopeDeserializationException("Envelope contains an invalid message URN.", ex);
+        }
+
+        if (envelope.Headers?.Values.Any(value => value is null) == true)
+        {
+            throw new EnvelopeDeserializationException("Envelope application headers must have string values.");
+        }
+
+        if (envelope.SentTime is { Kind: not DateTimeKind.Utc })
+        {
+            throw new EnvelopeDeserializationException("Envelope 'sentTime' must be UTC with a Z suffix.");
+        }
+
+        if (envelope.DestinationAddress is { IsAbsoluteUri: false })
+        {
+            throw new EnvelopeDeserializationException("Envelope 'destinationAddress' must be an absolute URI.");
+        }
+
+        if (envelope.Message.ValueKind != JsonValueKind.Object)
         {
             throw new EnvelopeDeserializationException(ErrorMessages.MissingMessage);
         }

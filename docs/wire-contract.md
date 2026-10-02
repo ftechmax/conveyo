@@ -1,35 +1,29 @@
 # Conveyo wire contract
 
-This document is the cross-language specification for the Conveyo
-RabbitMQ wire format. A Go, Rust, Python, or Node.js client that follows
-the rules below can produce and consume messages that interoperate with
-the .NET implementation in this repository.
-
-If anything here disagrees with the JSON fixtures under
-[`tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/`](../tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/),
-**the fixtures are authoritative** — they are pinned by `EnvelopeGoldenTests`
-and any change to them is an intentional wire-contract change.
+Conveyo messages use a JSON envelope over RabbitMQ. Clients in any language
+must follow the envelope, routing, and storage rules below to interoperate.
 
 ## 1. Envelope
 
 ### 1.1 Encoding
 
 - Every message body is a single JSON object — the **envelope**.
-- Encoding is UTF-8. No BOM. Compact (no indentation, no trailing newline).
+- Encoding is UTF-8. No BOM. Producers use compact JSON; consumers accept JSON whitespace.
+- Property order, equivalent escaping, and equivalent numeric formatting do not
+  change a JSON value. Array order is significant.
 - Property names are camelCase. Property reads are case-insensitive on the
   .NET side, but new senders MUST emit camelCase.
-- Null-valued fields are emitted, not omitted (e.g. `"headers": null`).
-- The AMQP `content-type` is `application/json`. Messages are published with
-  `delivery-mode = 2` (persistent).
+- Producers emit null-valued optional fields (e.g. `"headers": null`); receivers
+  also accept omitted optional fields. Unknown envelope and host fields are ignored.
 
 ### 1.2 Fields
 
 | Field                | JSON type           | Required | Semantics |
 | -------------------- | ------------------- | -------- | --------- |
-| `envelopeVersion`    | string              | Yes      | Currently `"1"`. See [§4 Versioning](#4-versioning). |
-| `messageId`          | string (UUID) \| null | No     | Application-assigned message id, distinct from the AMQP transport `message-id`. |
+| `envelopeVersion`    | string              | Yes      | `"1"`. See [§4 Versioning](#4-versioning). |
+| `messageId`          | string (UUID) \| null | No     | Fresh UUID for each outgoing message; copied to AMQP `message-id`. |
 | `correlationId`      | string (UUID) \| null | No     | Default propagation key carried with the message across produce/consume. |
-| `destinationAddress` | string (URI) \| null  | No     | Set by the consumer to `queue:<queueName>` on receive. Producers MAY leave this null. |
+| `destinationAddress` | string (URI) \| null  | No     | Absolute URI. Replaced with `queue:<queueName>` on receive; producers MAY leave it null. |
 | `messageType`        | array of string     | Yes      | One or more URNs identifying the message type. Most-specific first; see [§1.4](#14-messagetype-urns). |
 | `message`            | object              | Yes      | The user payload. Shape is defined per `messageType`. |
 | `sentTime`           | string (RFC 3339) \| null | No | When the producer serialized the envelope, UTC. |
@@ -41,83 +35,54 @@ and any change to them is an intentional wire-contract change.
 `sentTime` is an RFC 3339 / ISO 8601 string, always in UTC with a `Z`
 suffix. The .NET serializer omits trailing zero fractional seconds
 (e.g. `2026-05-14T12:34:56.789Z`, not `2026-05-14T12:34:56.7890000Z`).
-Cross-language senders MAY include any sub-second precision; the .NET
-consumer parses with
-`DateTimeOffset.Parse(..., styles: AssumeUniversal | AdjustToUniversal)`.
+Use uppercase `T` and `Z` and include seconds. The accepted grammar is
+`YYYY-MM-DDTHH:mm:ss[.fraction]Z`, with 1–16 digits when a fraction is present.
+Dates must be valid calendar dates. Reject offsets, missing zones, lowercase
+separators, trailing whitespace, and more than sixteen fractional digits.
+Missing or null timestamps are accepted.
+
+.NET retains at most seven fractional digits and truncates later digits. Use at
+most seven digits for timestamps that must round-trip losslessly through .NET.
+These rules also apply to fault timestamps.
+
+UUIDs use the standard hyphenated 8-4-4-4-12 hexadecimal form; letter case is
+insignificant. No specific UUID version is required.
 
 ### 1.4 `messageType` URNs
 
 - The array MUST contain at least one entry.
 - Entry 0 is the **primary URN** — the one this envelope is published with
   on the wire and the name of the corresponding RabbitMQ exchange.
-- Additional entries declare the message's supertypes for routing on
-  consumers that subscribe to a less-specific URN. Order goes from most-
-  specific to least-specific.
-- URNs often use a domain-oriented scheme (e.g.
-  `weather:WeatherObservationRecordedEvent.v2`), but Conveyo does not validate
-  the scheme — any non-empty string is accepted as a routing key.
+- Additional entries provide ordered dispatch fallback **after delivery**. The
+  receiver chooses the first locally registered URN, then finds handlers for the
+  receiving endpoint. An entry does not create a broker route or binding; a
+  subscriber to a secondary URN needs an explicit route that delivers the message.
+- Normal library publishing emits one primary URN.
+- URNs are case-sensitive, nonempty strings containing only ASCII letters,
+  digits, `.`, `_`, `:`, and `-`, with at most 255 bytes (AMQP short-string limit).
+  There is no required URI scheme. Derived fault URNs append `.fault` and must
+  satisfy the same limit, leaving at most 249 bytes for a normal mapped URN.
 
 ### 1.5 `host`
 
-```jsonc
-{
-  "machineName": "golden-host",
-  "processName": "Conveyo.GoldenTests",
-  "processId": 4242,
-  "assembly": "Conveyo.Test",
-  "conveyoVersion": "0.0.0-golden",
-  "operatingSystemVersion": "Unix 6.1.0",
-  "runtime": "dotnet",
-  "runtimeVersion": "10.0.0"
-}
-```
+Host properties are optional strings or null: `machineName`, `processName`,
+`conveyoVersion`, `operatingSystemVersion`, `runtime`, and `runtimeVersion`.
+`runtime` and `runtimeVersion` describe the language runtime and its version.
+All fields are informational; unknown host properties are accepted. See the host
+object in the [command example](../contracts/fixtures/envelopes/command.json).
 
-`runtime` and `runtimeVersion` are the cross-language identity. A Go
-sender SHOULD emit `"runtime": "go"` with its Go version. All other
-fields are optional and informational.
+### 1.6 Shared examples
 
-### 1.6 Example
-
-A minimal command envelope, taken verbatim from
-[`tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/plain-command.json`](../tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/plain-command.json):
-
-```json
-{
-  "envelopeVersion": "1",
-  "messageId": "11111111-2222-3333-4444-555555555555",
-  "correlationId": "33333333-4444-5555-6666-777777777777",
-  "destinationAddress": "queue:golden-destination",
-  "messageType": [
-    "conveyo:golden.submit-invoice.v1"
-  ],
-  "message": {
-    "invoiceNumber": "INV-2026-0001",
-    "retryCount": 3,
-    "force": true
-  },
-  "sentTime": "2026-05-14T12:34:56.789Z",
-  "headers": null,
-  "host": {
-    "machineName": "golden-host",
-    "processName": "Conveyo.GoldenTests",
-    "processId": 4242,
-    "assembly": "Conveyo.Test",
-    "conveyoVersion": "0.0.0-golden",
-    "operatingSystemVersion": "Unix 6.1.0",
-    "runtime": "dotnet",
-    "runtimeVersion": "10.0.0"
-  }
-}
-```
-
-Further examples (events with nested lists, multi-URN `messageType`,
-`headers`, and `MessageData` payloads) live in
-[`tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/`](../tests/Conveyo.RabbitMQ.Test/GoldenEnvelopes/).
+The [command envelope](../contracts/fixtures/envelopes/command.json) contains
+identifiers, a destination, application headers, and a nested object/list payload.
+Two further examples carry a MessageData reference (see [§3](#3-messagedata)):
+[inline data](../contracts/fixtures/envelopes/message-data-inline.json) and
+[a Postgres locator](../contracts/fixtures/envelopes/message-data-pgbin.json).
+Tests use these same [protocol fixtures](testing.md#protocol-fixtures).
 
 ### 1.7 AMQP basic properties
 
-In addition to the envelope body, Conveyo sets these AMQP properties on
-every publish:
+Conveyo sets these AMQP properties when publishing an envelope:
 
 | Property        | Value |
 | --------------- | ----- |
@@ -135,200 +100,184 @@ properties — the properties are informational.
 
 ## 2. Topology
 
-Conveyo declares topology eagerly during `StartAsync` (both producer and
-consumer processes). All declarations are idempotent — running them on a
-broker where they already exist with the same arguments is a no-op.
+Producer and consumer processes declare their main topology before sending or
+receiving messages. Repeating a declaration with the same arguments has no effect.
 
 ### 2.1 Per-queue layout
 
-For each consumed queue `<q>`:
+Bind each consumed URN exchange to the queue exchange, then bind the queue to
+its queue exchange:
 
-```
-                                    ┌────────────────────┐
-                                    │ exchange <urn>     │ fanout
-                                    │ (per messageType)  │
-                                    └─────────┬──────────┘
-                                              │ exchange-to-exchange bind
-                                              ▼
-                                    ┌────────────────────┐
-publish(messageType, body) ───────► │ exchange <q>       │ fanout
-                                    └─────────┬──────────┘
-                                              │ queue bind
-                                              ▼
-                                    ┌────────────────────┐
-                                    │ queue <q>          │
-                                    └─────────┬──────────┘
-                                              │
-            ┌─────────────────────────────────┼─────────────────────────────────┐
-            │ retries exhausted /             │                  no consumer    │
-            │ envelope deserialize failed     │                  registered     │
-            ▼                                 │                                 ▼
-direct-publish (no exchange) ─────► ┌────────────────────┐    direct-publish (no exchange) ────► ┌────────────────┐
-                                    │ queue <q>_error    │                                       │ queue <q>_skipped│
-                                    └────────────────────┘                                       └────────────────┘
-            carries headers:                                  carries headers:
-              conveyo-outcome = "faulted"                       conveyo-outcome = "skipped"
-              conveyo-fault-original-queue = <q>                conveyo-skipped-reason = <message>
-              conveyo-fault-reason = "exception" |              conveyo-skipped-original-queue = <q>
-                                  "deserialization-failed" |
-                                  "envelope-too-large"
-              conveyo-fault-exception-type = <type FullName>
-              conveyo-fault-exception-message = "Exception details redacted."
-              conveyo-fault-attempts = <int as string>
-              conveyo-fault-timestamp = <RFC 3339 UTC>
+```text
+publish → <urn> exchange → <queueName> exchange → <queueName> queue
+send    → default exchange → <queueName> queue
+failure → default exchange → <queueName>_error or <queueName>_skipped
 ```
 
 ### 2.2 Naming convention
 
 | Object                  | Name                  | Notes |
 | ----------------------- | --------------------- | ----- |
-| Main exchange           | `<queueName>`         | fanout, durable, not auto-delete |
-| Main queue              | `<queueName>`         | durable; no `x-dead-letter-exchange` argument |
-| Per-message exchange    | `<urn>` (e.g. `weather:WeatherObservationRecordedEvent.v2`) | fanout; bound *to* the main exchange via exchange-to-exchange binding |
-| Error queue             | `<queueName>_error`   | durable; declared lazily on first failed message; Conveyo direct-publishes here with `conveyo-fault-*` discriminator headers. No exchange or broker DLX involvement. |
-| Skipped queue           | `<queueName>_skipped` | durable; declared lazily on first skipped message; Conveyo direct-publishes here with `conveyo-skipped-*` discriminator headers. |
+| Main exchange | `<queueName>` | Receives events from bound URN exchanges. |
+| Main queue | `<queueName>` | Receives commands and events. |
+| Per-message exchange | `<urn>` | One exchange per mapped message type. |
+| Error queue | `<queueName>_error` | Receives failed deliveries. |
+| Skipped queue | `<queueName>_skipped` | Receives unhandled deliveries. |
 
 All exchanges are `fanout`, `durable=true`, `autoDelete=false`. All
 queues are `durable=true`, `exclusive=false`, `autoDelete=false`.
 
-Conveyo does **not** use RabbitMQ's `x-dead-letter-exchange` queue
-argument. The error queue is fed by pipeline publish from the consumer
-process, which lets Conveyo attach fault discriminator headers on the
-dead-lettered copy. Cross-language consumers that bind to
-`<queueName>_error` should read the `conveyo-fault-*` headers rather
-than expecting broker-set `x-death`.
-
-Exception messages and stack traces are not published into broker-visible
-fault headers. `conveyo-fault-exception-type` identifies the top-level
-exception type; `conveyo-fault-exception-message` is intentionally redacted.
-By default the inner-exception chain is also dropped from broker-visible
-fault metadata and from `Fault<T>` payloads — only the outermost exception
-type is surfaced. Full exception details remain available to in-process
-logging and fault hooks. For local development/debugging, .NET callers can
-opt in with `IncludeFaultExceptionDetails()` on `IConveyoBuilder` for
-`Fault<T>` payloads (which then includes inner exceptions and stack traces)
-and on `RabbitMqHostOptions` for RabbitMQ `_error` queue headers.
-
 ### 2.3 Producer-side declarations
 
-A producer process declares every URN exchange listed via `cfg.Map<T>(...)`
-at startup, so it can publish even before any consumer is up. It does
-**not** declare consumer queues or the error/skipped queues — those are
-owned by the consumer process. The consumer process declares `_error` and
-`_skipped` queues lazily, just before the first terminal publish to each
-queue.
+A producer declares mapped application URN exchanges at startup, so it can
+publish before a consumer is up. Consumers own their receive queues, queue
+exchanges, and bindings.
 
-Exchanges for `Fault<T>` URNs (any URN whose registered type is
-`Fault<>`) are an exception: they are declared **lazily, on the first
-publish of that fault type**, not at startup. Most fault exchanges have
-no subscribers in practice and eager declaration clutters the broker.
-Lazy declaration is per-process-lifetime cached, so the round-trip is
-paid once.
+Fault URN exchanges (`<original-urn>.fault`) and terminal queues are redeclared
+before each publication. The RabbitMQ client automatically recovers startup
+topology after a lost connection.
 
 ### 2.4 Routing on publish vs. send
 
 | Operation       | Exchange         | Routing key | Mandatory flag | Behavior if no queue is bound |
 | --------------- | ---------------- | ----------- | -------------- | ----------------------------- |
 | `Publish<T>`    | `<primary urn>`  | (ignored — fanout) | `false` | Silently dropped. |
-| `Send<T>`       | (empty / default) | `<queueName>` | `true` | Broker returns the message; Conveyo throws `UnroutableMessage`. |
+| `Send<T>`       | (empty / default) | `<queueName>` | `true` | Broker returns the message; Conveyo reports an unroutable error (.NET: `UnroutableMessageException`). |
 
 ### 2.5 Failure paths
 
-All three failure paths use the same mechanism: Conveyo declares the
-sibling queue (`<queueName>_error` or `<queueName>_skipped`) if this
-process has not already done so, then the original message body is
-direct-published via the default (empty) exchange with `mandatory=true`.
-After the terminal copy is accepted, the original delivery is ack-ed off
-the main queue. Conveyo never `BasicNack`-s; broker dead-letter is not
-used.
+Conveyo declares the sibling terminal queue, publishes through the default
+exchange with `mandatory=true`, then acknowledges the original only after the
+terminal copy is confirmed and not returned.
 
-- A consumer that throws is retried up to `MaxRetryCount` times with
-  exponential delays (1s, 2s, 4s, …). On final failure the message is
-  published to `<queueName>_error` with `conveyo-fault-reason =
-  "exception"` and the last exception captured in
-  `conveyo-fault-exception-*` headers.
-- A malformed envelope (invalid JSON, missing required fields, or a JSON
-  body of `null`) is published to `<queueName>_error` with
-  `conveyo-fault-reason = "deserialization-failed"` and the parser
-  exception captured in `conveyo-fault-exception-*` headers.
-- An envelope whose body exceeds the configured `MaxEnvelopeSizeBytes`
-  limit is published to `<queueName>_error` with `conveyo-fault-reason =
-  "envelope-too-large"`. The original body is **not** propagated — the
-  published message has an empty body and carries only the
-  `conveyo-fault-*` discriminator headers. Cross-language `_error`
-  subscribers must check `conveyo-fault-reason` before attempting to
-  parse the body.
-- A consumer that throws `MessageNotConsumedException` (no handler
-  registered for the message type) is published to
-  `<queueName>_skipped` with the `conveyo-skipped-*` headers shown
-  above.
+| Failure | Queue | `conveyo-fault-reason` | Body |
+| --- | --- | --- | --- |
+| Dispatch retry exhaustion | `<queueName>_error` | `exception` | Original bytes. |
+| Invalid envelope, including JSON `null` or missing required fields | `<queueName>_error` | `deserialization-failed` | Original bytes. |
+| Envelope exceeds the configured size limit | `<queueName>_error` | `envelope-too-large` | Empty. |
+| No matching consumer or `MessageNotConsumedException` | `<queueName>_skipped` | Not set. | Original bytes. |
 
-In every case except `envelope-too-large` the original message body is
-preserved unchanged; the fault/skip metadata lives in the AMQP `headers`
-table on the published copy.
+Malformed and oversized envelopes are not retried. Error headers describe the
+last dispatch exception or the validation error. Check `conveyo-fault-reason`
+before parsing an error body; oversized copies contain no JSON. All terminal
+metadata is in AMQP headers, leaving preserved bodies unchanged.
 
-`Fault<T>` events are emitted independently when a consumer exception is
-routed to the error queue. They are *additional* signal for reactive
-subscribers (sagas, alerting); the authoritative record of the failure
-is the message in `<queueName>_error`.
+| Terminal header | Value |
+| --- | --- |
+| `conveyo-outcome` | `faulted` or `skipped`. |
+| `conveyo-fault-original-queue` / `conveyo-skipped-original-queue` | Original receiving queue. |
+| `conveyo-fault-reason` | `exception`, `deserialization-failed`, or `envelope-too-large`. |
+| `conveyo-fault-exception-type` | Top-level exception type name. |
+| `conveyo-fault-exception-message` | `Exception details redacted.` by default. |
+| `conveyo-fault-attempts` | Attempt count as a string. |
+| `conveyo-fault-timestamp` | UTC timestamp. |
+| `conveyo-skipped-reason` | Skip reason text. |
 
-Faults are **published** to the URN exchange `<original-urn>.fault`
-(fanout). Subscribers who want to observe faults bind their queue to this
-exchange. Conveyo does not inspect inbound envelope headers when routing
-faults — applications that need direct fault replies must apply their own
-trusted routing policy rather than trusting an address carried on the
-failed envelope.
+Faulted copies use `conveyo-fault-*`; skipped copies use `conveyo-skipped-*`.
+Conveyo does not use `BasicNack` or `x-dead-letter-exchange`; read these headers
+rather than expecting broker-set `x-death`. Exception details remain available
+to in-process logging. The .NET diagnostic opt-in adds exception messages and
+`conveyo-fault-stack-trace`; see [RabbitMQ](rabbitmq.md#fault-messages).
+
+### 2.6 Confirms, retries, and lifecycle
+
+Publish completion requires a positive publisher confirmation; a mandatory
+return is a failure even if the broker also confirms. A confirm means broker
+acceptance, not handler completion. A lost connection can leave the outcome
+uncertain; at-least-once delivery requires handlers to tolerate duplicates.
+
+If terminal publication fails, the original delivery remains unacknowledged.
+The broker redelivers it when its consumer channel closes or the connection
+recovers. The .NET transport propagates the failure and leaves the delivery
+pending until that lifecycle event; it does not immediately recycle the channel.
+Unknown messages and explicit skips are not retried. Shutdown cancellation does
+not create a business fault.
+The default is three retries after the initial attempt, delayed by 1s, 2s, and
+4s, prefetch 16, and a 1 MiB inbound envelope limit. Each retry decodes a fresh
+message and executes the full handler sequence again.
+
+### 2.7 Fault payload
+
+A fault is an ordinary envelope whose primary URN is `<original-urn>.fault`.
+Its `message` is an object with these required fields:
+
+| Field | JSON type | Meaning |
+| --- | --- | --- |
+| `faultId` | UUID string | Fresh identifier for the fault event |
+| `faultedMessageId` | UUID string or null | Identifier of the original message |
+| `timestamp` | UTC timestamp string | Time the fault was created |
+| `exceptions` | Nonempty array of exception objects | Exceptions from the failed attempts |
+| `host` | Object | Fault producer; uses the [host fields](#15-host) |
+| `message` | Object | Original typed payload |
+
+Each exception requires string `exceptionType` and `message` fields. Optional
+`stackTrace` is a string or null; optional `innerException` is a recursive
+exception object or null. Unknown fault and exception fields are accepted.
+Diagnostic type names are language specific and must not be used as portable
+identifiers.
+
+By default, exception messages are `Exception details redacted.`, stack traces
+and inner exceptions are null. See the [redacted example](../contracts/fixtures/payloads/fault.json).
+Fault publication is best effort and precedes terminal routing after retry
+exhaustion; a failed fault publish must not prevent the original reaching `_error`.
+Malformed, oversized, and skipped messages do not produce a typed fault event.
+The `_error` copy is the authoritative failure record. Subscribers bind to the
+`<original-urn>.fault` exchange. Inbound envelope headers never select the fault
+destination; direct replies require an application's trusted routing policy.
+
+### 2.8 Metadata and tracing
+
+Producers create a fresh message ID and UTC send time for every outgoing envelope.
+Messages sent or published inside a consumer inherit its correlation ID and
+application headers, including null correlation; correlation does not implicitly
+fall back to the message ID. The receiving transport replaces destination metadata
+with `queue:<receiving queue>` for dispatch. It does not trust an inbound destination
+to choose another queue.
+
+Application headers are string-valued JSON entries inside `headers`. They are
+not copied into AMQP headers. The AMQP table contains protocol metadata such as
+`conveyo-version`, terminal diagnostics, and W3C `traceparent` / `tracestate`.
+Tracing fields travel as UTF-8 AMQP values; .NET also accepts string values on
+input. Consumers extract the remote parent and producers inject the current
+activity context. `tracestate` accompanies a valid `traceparent`; invalid trace
+context starts a new trace. Terminal copies preserve original identity and trace
+properties. See [AMQP expectations](../contracts/fixtures/transport/rabbitmq.json).
+
+### 2.9 Application payload representation
+
+Payload schemas belong to applications. Use concrete numeric types to preserve
+integer and decimal precision. .NET defaults to numeric enums and base64 `byte[]`;
+see the [numeric and binary fixture](../contracts/fixtures/payloads/types.json).
 
 ## 3. MessageData
 
-`MessageData<T>` carries an out-of-band payload by URI reference inside
-the message. The supported URI schemes and their grammars are documented
-in [`docs/messagedata-uris.md`](./messagedata-uris.md). At a glance:
+MessageData carries a payload reference inside the message. Resolve inline
+`data:` bytes or Postgres `pgbin://` locators according to
+[MessageData URI schemes](messagedata-uris.md).
 
-| Backend                | Scheme    | Canonical form                                  |
-| ---------------------- | --------- | ----------------------------------------------- |
-| Inline base64 payload  | `data`    | `data:[<mediatype>];base64,<payload>`           |
-| Postgres bytea chunks  | `pgbin`   | `pgbin://<schema>/files/<uuid>`                 |
+A non-null MessageData reference is a JSON object with a required `address`
+string containing a nonempty absolute URI. Producers emit only this key; readers
+accept unknown keys. Reject missing, null, empty, or relative addresses and a
+bare JSON string in place of the reference object. A null MessageData property
+is permitted. See the two [reference envelope examples](#16-shared-examples).
+Reference deserialization checks shape and absolute URI syntax; resolution
+separately validates a supported scheme and its locator rules.
 
-On the wire, a `MessageData<T>` property is serialized as a single-key
-object:
-
-```json
-"payload": { "address": "pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111" }
-```
-
-A consumer in any language resolves `address` against the appropriate
-backend only when the locator's namespace matches the resolver's configured
-storage namespace. There is no neutral bridge scheme or HTTP indirection. The
-`data:` scheme is the one exception — Conveyo accepts base64-encoded inline
-payloads rather than addressing a remote stream, so there is no remote resolver
-to contact.
-
-Consumers enforce a maximum hydrated MessageData payload size. The .NET
-default is 64 MiB and can be changed with `MaxMessageDataBytes(...)`.
-`MessageData<string>` and `MessageData<byte[]>` fail during hydration when the
-limit is exceeded; `MessageData<Stream>` surfaces the same failure if the
-consumer reads beyond the configured limit.
+Consumers enforce a maximum hydrated MessageData payload size. The default
+decoded limit is 64 MiB. Materialized text and byte arrays fail
+when that limit is exceeded; streaming reads fail when reading past the limit
+instead of silently returning EOF. .NET configures this limit with
+`MaxMessageDataBytes`; see the [MessageData guide](messagedata.md#limits).
+Text uses UTF-8; binary data retains the decoded bytes.
 
 ## 4. Versioning
 
-`envelopeVersion` is currently `"1"` and applies to the **envelope
-shape**, not to individual message payloads. The string form leaves room
-for non-numeric tags (e.g. `"1-rc"`) without changing the schema.
+`envelopeVersion` versions the envelope shape. Consumers MUST reject unsupported
+versions; only the string `"1"` is supported, not the number `1`.
 
-Rules for consumers:
+Adding optional fields does not bump the version; readers SHOULD ignore unknown
+fields. Renaming fields, changing types, or changing whether a field is required
+MUST bump the version.
 
-- A consumer MUST refuse envelopes whose `envelopeVersion` is unknown to
-  it — i.e. anything other than `"1"` until a future version is defined.
-  Routing such a message into the user's handler is incorrect.
-- Compatible additive changes (adding optional fields) do **not** bump
-  `envelopeVersion`. Cross-language clients SHOULD ignore unknown fields
-  on read.
-- Breaking changes (renaming a field, changing a field's type, changing
-  required-ness) MUST bump `envelopeVersion`. The new version will be
-  documented here before any code that emits it ships.
-
-Payload (`message`) compatibility is the responsibility of the URN. Each
-URN identifies one schema; if the schema changes incompatibly, mint a
-new URN (e.g. `weather:WeatherObservationRecordedEvent.v2` alongside
-`.v1`) rather than mutating the existing one.
+Payload compatibility belongs to the URN. Use a new URN for an incompatible
+payload change, such as `example:observation.v2` alongside `.v1`.

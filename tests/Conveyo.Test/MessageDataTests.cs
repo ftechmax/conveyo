@@ -6,28 +6,43 @@ public class MessageDataTests
     [Test]
     public void Constructor_WithAddress_HasValueFalse()
     {
+        // Arrange
         var address = new Uri("pgbin://md/files/0194ad8f-61a2-7f28-9001-111111111111");
+
+        // Act
         var messageData = new MessageData<string>(address);
 
-        Assert.That(messageData.Address, Is.EqualTo(address));
-        Assert.That(messageData.HasValue, Is.False);
-        Assert.That(messageData.Value, Is.Null);
+        // Assert
+        messageData.Address.ShouldBe(address);
+        messageData.HasValue.ShouldBeFalse();
+        messageData.Value.ShouldBeNull();
     }
 
     [Test]
     public void Constructor_NullAddress_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new MessageData<string>(null!));
+        // Arrange
+        Uri address = null!;
+
+        // Act
+        var operation = () => new MessageData<string>(address);
+
+        // Assert
+        Should.Throw<ArgumentNullException>(operation);
     }
 
     [Test]
     public void InternalHydrationConstructor_PopulatesAddressAndValue()
     {
+        // Arrange
         var address = new Uri("pgbin://md/files/0194ad8f-61a2-7f28-9001-222222222222");
+
+        // Act
         var instance = new MessageData<string>(address, "hello");
 
-        Assert.That(instance.Address, Is.EqualTo(address));
-        Assert.That(instance.HasValue, Is.True);
-        Assert.That(instance.Value, Is.EqualTo("hello"));
+        // Assert
+        instance.Address.ShouldBe(address);
+        instance.HasValue.ShouldBeTrue();
+        instance.Value.ShouldBe("hello");
     }
 }

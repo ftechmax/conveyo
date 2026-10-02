@@ -15,7 +15,8 @@ internal sealed class RabbitMqMessageHandler(
     Func<MessageEnvelope, IReadOnlyList<Exception>, CancellationToken, Task>? onFaultAsync = null,
     int maxRetryCount = 3,
     int maxEnvelopeSizeBytes = RabbitMqHostOptions.DefaultMaxEnvelopeSizeBytes,
-    bool includeFaultExceptionDetails = false)
+    bool includeFaultExceptionDetails = false,
+    CancellationToken stoppingToken = default)
 {
     internal const string OutcomeHeader = "conveyo-outcome";
     internal const string SkippedReasonHeader = "conveyo-skipped-reason";
@@ -43,13 +44,13 @@ internal sealed class RabbitMqMessageHandler(
         : throw new ArgumentOutOfRangeException(nameof(maxRetryCount), ErrorMessages.RetryCountCannotBeNegative);
 
     private readonly bool _includeFaultExceptionDetails = includeFaultExceptionDetails;
-    private readonly Dictionary<string, Task> _terminalQueueDeclareTasks = new(StringComparer.Ordinal);
-    private readonly object _terminalQueueDeclareLock = new();
 
     public async Task HandleMessageAsync(BasicDeliverEventArgs @event, string queueName)
     {
-        // The broker's cancellation token signals consumer cancellation; honour it for IO operations.
-        var cancellationToken = @event.CancellationToken;
+        // Both broker cancellation and bus shutdown end this delivery's IO and retry work.
+        using var deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(@event.CancellationToken, stoppingToken);
+        var cancellationToken = deliveryCancellation.Token;
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (@event.Body.Length > _maxEnvelopeSizeBytes)
         {
@@ -120,26 +121,24 @@ internal sealed class RabbitMqMessageHandler(
 
         for (var attempt = 1; attempt <= totalAttempts; attempt++)
         {
+            if (attempt > 1)
+            {
+                // exponential backoff: 1s, 2s, 4s, ...
+                var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt - 2));
+                activity?.AddEvent(new ActivityEvent("retry", tags: new ActivityTagsCollection
+                {
+                    ["attempt"] = attempt - 1
+                }));
+                logger?.LogWarning(
+                    LogMessages.Retry,
+                    attempt - 1, _maxRetryCount, envelope.MessageId, backoff);
+                await Task.Delay(backoff, cancellationToken);
+            }
+
             try
             {
-                if (attempt > 1)
-                {
-                    // exponential backoff: 1s, 2s, 4s, ...
-                    var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt - 2));
-                    activity?.AddEvent(new ActivityEvent("retry", tags: new ActivityTagsCollection
-                    {
-                        ["attempt"] = attempt - 1
-                    }));
-                    logger?.LogWarning(
-                        LogMessages.Retry,
-                        attempt - 1, _maxRetryCount, envelope.MessageId, backoff);
-                    await Task.Delay(backoff, cancellationToken);
-                }
-
                 await onMessageAsync.Invoke(envelope, cancellationToken);
-                await consumerChannel.BasicAckAsync(@event.DeliveryTag, multiple: false, cancellationToken);
-                activity?.SetStatus(ActivityStatusCode.Ok);
-                return;
+                break;
             }
             catch (MessageNotConsumedException ex)
             {
@@ -190,6 +189,10 @@ internal sealed class RabbitMqMessageHandler(
                 return;
             }
         }
+
+        // A transport acknowledgement failure must not retry successful application work.
+        await consumerChannel.BasicAckAsync(@event.DeliveryTag, multiple: false, cancellationToken);
+        activity?.SetStatus(ActivityStatusCode.Ok);
     }
 
     private async Task TryPublishFaultAsync(MessageEnvelope envelope, IReadOnlyList<Exception> exceptions, CancellationToken cancellationToken)
@@ -283,7 +286,7 @@ internal sealed class RabbitMqMessageHandler(
         try
         {
             await using var publisherChannel = await publisherChannelFactory(cancellationToken);
-            await EnsureTerminalQueueDeclaredAsync(publisherChannel, queue, cancellationToken);
+            await RabbitMqTopology.DeclareDurableQueueAsync(publisherChannel, queue, cancellationToken);
 
             var properties = RabbitMqMessageProperties.PersistentJson();
 
@@ -307,12 +310,10 @@ internal sealed class RabbitMqMessageHandler(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            ForgetTerminalQueueDeclaration(queue);
             throw;
         }
         catch (Exception ex)
         {
-            ForgetTerminalQueueDeclaration(queue);
             throw new InvalidOperationException(ErrorMessages.TerminalQueuePublishFailed(queue), ex);
         }
     }
@@ -351,43 +352,4 @@ internal sealed class RabbitMqMessageHandler(
             }
         }
     }
-
-    private async Task EnsureTerminalQueueDeclaredAsync(IChannel channel, string queue, CancellationToken cancellationToken)
-    {
-        Task declareTask;
-        lock (_terminalQueueDeclareLock)
-        {
-            if (!_terminalQueueDeclareTasks.TryGetValue(queue, out declareTask!))
-            {
-                declareTask = RabbitMqTopology.DeclareDurableQueueAsync(channel, queue, cancellationToken);
-                _terminalQueueDeclareTasks[queue] = declareTask;
-            }
-        }
-
-        try
-        {
-            await declareTask;
-        }
-        catch
-        {
-            lock (_terminalQueueDeclareLock)
-            {
-                if (_terminalQueueDeclareTasks.TryGetValue(queue, out var cached) && ReferenceEquals(cached, declareTask))
-                {
-                    _terminalQueueDeclareTasks.Remove(queue);
-                }
-            }
-
-            throw;
-        }
-    }
-
-    private void ForgetTerminalQueueDeclaration(string queue)
-    {
-        lock (_terminalQueueDeclareLock)
-        {
-            _terminalQueueDeclareTasks.Remove(queue);
-        }
-    }
-
 }

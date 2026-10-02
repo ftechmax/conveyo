@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Text;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -34,65 +33,73 @@ public class TracingTests
     [Test]
     public async Task Send_EmitsProducerActivityAndInjectsTraceparent()
     {
-        var publisher = TestChannel.Create();
+        // Arrange
+        var publisher = TestChannel.Publisher();
         var endpoint = new RabbitMqSendEndpoint(
             _ => Task.FromResult(publisher.Channel),
             queueName: "orders",
             hostInfo: new HostInfo(),
             urn: "conveyo:test.example.v1");
 
+        // Act
         await endpoint.Send(new ExampleMessage("hello"));
 
+        // Assert
         var producer = _stoppedActivities.Single();
-        Assert.That(producer.Kind, Is.EqualTo(ActivityKind.Producer));
-        Assert.That(producer.OperationName, Is.EqualTo("orders send"));
-        Assert.That(producer.GetTagItem("messaging.system"), Is.EqualTo(RabbitMqDiagnosticHeaders.MessagingSystem));
-        Assert.That(producer.GetTagItem("messaging.operation.type"), Is.EqualTo("send"));
-        Assert.That(producer.GetTagItem("messaging.destination.name"), Is.EqualTo("orders"));
-        Assert.That(producer.GetTagItem(RabbitMqDiagnosticHeaders.RoutingKey), Is.EqualTo("orders"));
-        Assert.That(producer.GetTagItem("conveyo.message_type"), Is.EqualTo("conveyo:test.example.v1"));
+        producer.Kind.ShouldBe(ActivityKind.Producer);
+        producer.OperationName.ShouldBe("orders send");
+        producer.GetTagItem("messaging.system").ShouldBe(RabbitMqDiagnosticHeaders.MessagingSystem);
+        producer.GetTagItem("messaging.operation.type").ShouldBe("send");
+        producer.GetTagItem("messaging.destination.name").ShouldBe("orders");
+        producer.GetTagItem(RabbitMqDiagnosticHeaders.RoutingKey).ShouldBe("orders");
+        producer.GetTagItem("conveyo.message_type").ShouldBe("conveyo:test.example.v1");
 
         var properties = publisher.PublishedProperties.Single();
-        Assert.That(properties.Headers, Is.Not.Null);
-        Assert.That(properties.Headers!.ContainsKey("traceparent"), Is.True);
+        properties.Headers.ShouldNotBeNull();
+        properties.Headers!.ContainsKey("traceparent").ShouldBeTrue();
         var traceparent = Encoding.UTF8.GetString((byte[])properties.Headers["traceparent"]!);
-        Assert.That(traceparent, Does.Contain(producer.TraceId.ToHexString()));
+        traceparent.ShouldContain(producer.TraceId.ToHexString());
     }
 
     [Test]
     public async Task Publish_EmitsProducerActivityWithPublishOperation()
     {
-        var publisher = TestChannel.Create();
+        // Arrange
+        var publisher = TestChannel.Publisher();
         var endpoint = new RabbitMqPublishEndpoint(
             _ => Task.FromResult(publisher.Channel),
             exchangeName: "orders-exchange",
             hostInfo: new HostInfo(),
             urn: "conveyo:test.example.v1");
 
+        // Act
         await endpoint.Publish(new ExampleMessage("hi"));
 
+        // Assert
         var producer = _stoppedActivities.Single();
-        Assert.That(producer.Kind, Is.EqualTo(ActivityKind.Producer));
-        Assert.That(producer.OperationName, Is.EqualTo("orders-exchange publish"));
-        Assert.That(producer.GetTagItem("messaging.operation.type"), Is.EqualTo("publish"));
-        Assert.That(producer.GetTagItem("messaging.destination.name"), Is.EqualTo("orders-exchange"));
+        producer.Kind.ShouldBe(ActivityKind.Producer);
+        producer.OperationName.ShouldBe("orders-exchange publish");
+        producer.GetTagItem("messaging.operation.type").ShouldBe("publish");
+        producer.GetTagItem("messaging.destination.name").ShouldBe("orders-exchange");
     }
 
     [Test]
     public async Task Consumer_ExtractsParentContextFromHeaders()
     {
+        // Arrange
         var traceId = ActivityTraceId.CreateRandom();
         var spanId = ActivitySpanId.CreateRandom();
         var traceparent = $"00-{traceId.ToHexString()}-{spanId.ToHexString()}-01";
 
-        var consumer = TestChannel.Create();
-        var publisher = TestChannel.Create();
+        var consumer = TestChannel.Consumer();
+        var publisher = TestChannel.Publisher();
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
             _ => Task.FromResult(publisher.Channel),
             logger: null,
             onMessageAsync: (_, _) => Task.CompletedTask);
 
+        // Act
         await handler.HandleMessageAsync(
             CreateDelivery(new ExampleMessage("hi"), headers: new Dictionary<string, object?>
             {
@@ -100,16 +107,18 @@ public class TracingTests
             }),
             "orders");
 
+        // Assert
         var consumerActivity = _stoppedActivities.Single();
-        Assert.That(consumerActivity.Kind, Is.EqualTo(ActivityKind.Consumer));
-        Assert.That(consumerActivity.TraceId, Is.EqualTo(traceId));
-        Assert.That(consumerActivity.ParentSpanId, Is.EqualTo(spanId));
-        Assert.That(consumerActivity.Status, Is.EqualTo(ActivityStatusCode.Ok));
+        consumerActivity.Kind.ShouldBe(ActivityKind.Consumer);
+        consumerActivity.TraceId.ShouldBe(traceId);
+        consumerActivity.ParentSpanId.ShouldBe(spanId);
+        consumerActivity.Status.ShouldBe(ActivityStatusCode.Ok);
     }
 
     [Test]
     public async Task EndToEnd_PublisherAndConsumerShareTraceId()
     {
+        // Arrange
         using var outerSource = new ActivitySource("OuterTest");
         using var outerListener = new ActivityListener
         {
@@ -119,22 +128,23 @@ public class TracingTests
         ActivitySource.AddActivityListener(outerListener);
 
         using var outer = outerSource.StartActivity("outer", ActivityKind.Internal);
-        Assert.That(outer, Is.Not.Null);
+        outer.ShouldNotBeNull();
         var expectedTraceId = outer!.TraceId;
 
-        var publisher = TestChannel.Create();
+        var publisher = TestChannel.Publisher();
         var sendEndpoint = new RabbitMqSendEndpoint(
             _ => Task.FromResult(publisher.Channel),
             queueName: "orders",
             hostInfo: new HostInfo(),
             urn: "conveyo:test.example.v1");
 
+        // Act
         await sendEndpoint.Send(new ExampleMessage("relay"));
 
         var publishedProperties = publisher.PublishedProperties.Single();
 
-        var consumer = TestChannel.Create();
-        var consumerPublisher = TestChannel.Create();
+        var consumer = TestChannel.Consumer();
+        var consumerPublisher = TestChannel.Publisher();
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
             _ => Task.FromResult(consumerPublisher.Channel),
@@ -156,15 +166,17 @@ public class TracingTests
 
         await handler.HandleMessageAsync(delivery, "orders");
 
+        // Assert
         var consumerActivity = _stoppedActivities.OfType<Activity>().Single(a => a.Kind == ActivityKind.Consumer);
-        Assert.That(consumerActivity.TraceId, Is.EqualTo(expectedTraceId));
+        consumerActivity.TraceId.ShouldBe(expectedTraceId);
     }
 
     [Test]
     public async Task RetriesAddEventsAndFinalSuccessIsOk()
     {
-        var consumer = TestChannel.Create();
-        var publisher = TestChannel.Create();
+        // Arrange
+        var consumer = TestChannel.Consumer();
+        var publisher = TestChannel.Publisher();
         var attempts = 0;
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
@@ -182,19 +194,22 @@ public class TracingTests
             },
             maxRetryCount: 3);
 
+        // Act
         await handler.HandleMessageAsync(CreateDelivery(new ExampleMessage("retry")), "orders");
 
+        // Assert
         var activity = _stoppedActivities.Single();
-        Assert.That(activity.Status, Is.EqualTo(ActivityStatusCode.Ok));
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
         var retryEvents = activity.Events.Where(e => e.Name == "retry").ToList();
-        Assert.That(retryEvents, Has.Count.EqualTo(2));
+        retryEvents.Count.ShouldBe(2);
     }
 
     [Test]
     public async Task ExhaustedRetriesSetActivityToError()
     {
-        var consumer = TestChannel.Create();
-        var publisher = TestChannel.Create();
+        // Arrange
+        var consumer = TestChannel.Consumer();
+        var publisher = TestChannel.Publisher();
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
             _ => Task.FromResult(publisher.Channel),
@@ -202,36 +217,42 @@ public class TracingTests
             onMessageAsync: (_, _) => throw new InvalidOperationException("permanent"),
             maxRetryCount: 0);
 
+        // Act
         await handler.HandleMessageAsync(CreateDelivery(new ExampleMessage("dead")), "orders");
 
+        // Assert
         var activity = _stoppedActivities.Single();
-        Assert.That(activity.Status, Is.EqualTo(ActivityStatusCode.Error));
-        Assert.That(activity.StatusDescription, Is.EqualTo("permanent"));
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.StatusDescription.ShouldBe("permanent");
     }
 
     [Test]
     public async Task MessageNotConsumedKeepsStatusOk()
     {
-        var consumer = TestChannel.Create();
-        var publisher = TestChannel.Create();
+        // Arrange
+        var consumer = TestChannel.Consumer();
+        var publisher = TestChannel.Publisher();
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
             _ => Task.FromResult(publisher.Channel),
             logger: null,
             onMessageAsync: (_, _) => throw new MessageNotConsumedException("no consumer"));
 
+        // Act
         await handler.HandleMessageAsync(CreateDelivery(new ExampleMessage("skip")), "orders");
 
+        // Assert
         var activity = _stoppedActivities.Single();
-        Assert.That(activity.Status, Is.EqualTo(ActivityStatusCode.Ok));
-        Assert.That(activity.Events.Any(e => e.Name == "skipped"), Is.True);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.Events.Any(e => e.Name == "skipped").ShouldBeTrue();
     }
 
     [Test]
     public async Task MalformedEnvelopeStillEmitsErrorActivity()
     {
-        var consumer = TestChannel.Create();
-        var publisher = TestChannel.Create();
+        // Arrange
+        var consumer = TestChannel.Consumer();
+        var publisher = TestChannel.Publisher();
         var handler = new RabbitMqMessageHandler(
             consumer.Channel,
             _ => Task.FromResult(publisher.Channel),
@@ -248,10 +269,12 @@ public class TracingTests
             body: Encoding.UTF8.GetBytes("{not-json"),
             cancellationToken: CancellationToken.None);
 
+        // Act
         await handler.HandleMessageAsync(delivery, "orders");
 
+        // Assert
         var activity = _stoppedActivities.Single();
-        Assert.That(activity.Status, Is.EqualTo(ActivityStatusCode.Error));
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
     }
 
     private static BasicDeliverEventArgs CreateDelivery<T>(T message, IDictionary<string, object?>? headers = null)
@@ -287,103 +310,4 @@ public class TracingTests
 
     private sealed record ExampleMessage(string Value);
 
-    private class TestChannel : DispatchProxy
-    {
-        public IChannel Channel { get; private set; } = null!;
-
-        public List<IReadOnlyBasicProperties> PublishedProperties { get; } = [];
-
-        public static TestChannel Create()
-        {
-            var channel = Create<IChannel, TestChannel>();
-            var proxy = (TestChannel)(object)channel!;
-            proxy.Channel = channel;
-            return proxy;
-        }
-
-        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
-        {
-            if (targetMethod == null)
-            {
-                return null;
-            }
-
-            if (targetMethod.Name == nameof(IChannel.BasicPublishAsync))
-            {
-                PublishedProperties.Add((IReadOnlyBasicProperties)args![3]!);
-                return ValueTask.CompletedTask;
-            }
-
-            if (targetMethod.Name == nameof(IChannel.QueueDeclareAsync))
-            {
-                return CompletedTask(targetMethod.ReturnType);
-            }
-
-            if (targetMethod.Name == nameof(IChannel.BasicAckAsync) ||
-                targetMethod.Name == nameof(IChannel.BasicNackAsync))
-            {
-                return ValueTask.CompletedTask;
-            }
-
-            if (targetMethod.Name == nameof(IAsyncDisposable.DisposeAsync))
-            {
-                return ValueTask.CompletedTask;
-            }
-
-            if (targetMethod.Name == nameof(IDisposable.Dispose))
-            {
-                return null;
-            }
-
-            if (targetMethod.ReturnType == typeof(bool))
-            {
-                return true;
-            }
-
-            if (targetMethod.ReturnType == typeof(string))
-            {
-                return string.Empty;
-            }
-
-            if (targetMethod.ReturnType == typeof(ValueTask))
-            {
-                return ValueTask.CompletedTask;
-            }
-
-            if (targetMethod.ReturnType == typeof(Task))
-            {
-                return Task.CompletedTask;
-            }
-
-            if (targetMethod.ReturnType.IsGenericType &&
-                targetMethod.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
-            {
-                return CompletedTask(targetMethod.ReturnType);
-            }
-
-            if (targetMethod.ReturnType == typeof(ushort))
-            {
-                return (ushort)1;
-            }
-
-            return null;
-        }
-
-        private static object CompletedTask(Type returnType)
-        {
-            if (returnType == typeof(Task))
-            {
-                return Task.CompletedTask;
-            }
-
-            var resultType = returnType.GetGenericArguments()[0];
-            var method = typeof(TestChannel)
-                .GetMethod(nameof(TaskFromDefault), BindingFlags.NonPublic | BindingFlags.Static)!
-                .MakeGenericMethod(resultType);
-
-            return method.Invoke(null, null)!;
-        }
-
-        private static Task<T> TaskFromDefault<T>() => Task.FromResult(default(T)!);
-    }
 }

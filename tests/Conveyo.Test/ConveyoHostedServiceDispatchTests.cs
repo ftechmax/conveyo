@@ -12,31 +12,33 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_DispatchesOnlyConsumersRegisteredAtDestinationQueue()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
-        var (serviceProvider, context) = BuildServiceProvider(registrationContext, builder =>
+        var serviceProvider = BuildServiceProvider(registrationContext, builder =>
         {
             builder.Services.AddSingleton<FirstCapture>();
             builder.Services.AddSingleton<SecondCapture>();
             builder.Conveyo.Map<SharedMessage>("conveyo:test.shared.v1");
             builder.Conveyo.AddConsumer<FirstSharedMessageConsumer>();
             builder.Conveyo.AddConsumer<SecondSharedMessageConsumer>();
+            builder.ReceiveEndpoint<FirstSharedMessageConsumer>(new Uri("queue:first"));
+            builder.ReceiveEndpoint<SecondSharedMessageConsumer>(new Uri("queue:second"));
         });
         await using var _ = serviceProvider;
-
-        context._consumerEndpoints[typeof(FirstSharedMessageConsumer)] = [new Uri("queue:first")];
-        context._consumerEndpoints[typeof(SecondSharedMessageConsumer)] = [new Uri("queue:second")];
 
         var hostedService = serviceProvider.GetServices<IHostedService>().Single();
         await hostedService.StartAsync(CancellationToken.None);
 
         try
         {
+            // Act
             await registrationContext.DeliverAsync(CreateEnvelope<SharedMessage>(
                 new { Value = "hello" },
                 new Uri("queue:second")));
 
-            Assert.That(serviceProvider.GetRequiredService<FirstCapture>().Value, Is.Null);
-            Assert.That(serviceProvider.GetRequiredService<SecondCapture>().Value, Is.EqualTo("hello"));
+            // Assert
+            serviceProvider.GetRequiredService<FirstCapture>().Value.ShouldBeNull();
+            serviceProvider.GetRequiredService<SecondCapture>().Value.ShouldBe("hello");
         }
         finally
         {
@@ -47,32 +49,35 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_DispatchesAllConsumersRegisteredAtDestinationQueue()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
-        var (serviceProvider, context) = BuildServiceProvider(registrationContext, builder =>
+        var serviceProvider = BuildServiceProvider(registrationContext, builder =>
         {
             builder.Services.AddSingleton<FirstCapture>();
             builder.Services.AddSingleton<SecondCapture>();
             builder.Conveyo.Map<SharedMessage>("conveyo:test.shared.v1");
             builder.Conveyo.AddConsumer<FirstSharedMessageConsumer>();
             builder.Conveyo.AddConsumer<SecondSharedMessageConsumer>();
+            builder.ReceiveEndpoint<FirstSharedMessageConsumer>(new Uri("queue:shared"));
+            builder.ReceiveEndpoint<SecondSharedMessageConsumer>(new Uri("queue:shared"));
         });
         await using var _ = serviceProvider;
 
         var destinationAddress = new Uri("queue:shared");
-        context._consumerEndpoints[typeof(FirstSharedMessageConsumer)] = [destinationAddress];
-        context._consumerEndpoints[typeof(SecondSharedMessageConsumer)] = [destinationAddress];
 
         var hostedService = serviceProvider.GetServices<IHostedService>().Single();
         await hostedService.StartAsync(CancellationToken.None);
 
         try
         {
+            // Act
             await registrationContext.DeliverAsync(CreateEnvelope<SharedMessage>(
                 new { Value = "fanout" },
                 destinationAddress));
 
-            Assert.That(serviceProvider.GetRequiredService<FirstCapture>().Value, Is.EqualTo("fanout"));
-            Assert.That(serviceProvider.GetRequiredService<SecondCapture>().Value, Is.EqualTo("fanout"));
+            // Assert
+            serviceProvider.GetRequiredService<FirstCapture>().Value.ShouldBe("fanout");
+            serviceProvider.GetRequiredService<SecondCapture>().Value.ShouldBe("fanout");
         }
         finally
         {
@@ -83,16 +88,16 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_ResolvesByBaseUrn_WhenPrimaryUrnIsUnknown()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
-        var (serviceProvider, context) = BuildServiceProvider(registrationContext, builder =>
+        var serviceProvider = BuildServiceProvider(registrationContext, builder =>
         {
             builder.Services.AddSingleton<BaseCapture>();
             builder.Conveyo.Map<OrderCreatedBase>("conveyo:orders.order-created");
             builder.Conveyo.AddConsumer<BaseOrderCreatedConsumer>();
+            builder.ReceiveEndpoint<BaseOrderCreatedConsumer>(new Uri("queue:orders"));
         });
         await using var _ = serviceProvider;
-
-        context._consumerEndpoints[typeof(BaseOrderCreatedConsumer)] = [new Uri("queue:orders")];
 
         var hostedService = serviceProvider.GetServices<IHostedService>().Single();
         await hostedService.StartAsync(CancellationToken.None);
@@ -110,9 +115,11 @@ public class ConveyoHostedServiceDispatchTests
                 Message = JsonSerializer.SerializeToElement(new { Id = "abc" })
             };
 
+            // Act
             await registrationContext.DeliverAsync(envelope);
 
-            Assert.That(serviceProvider.GetRequiredService<BaseCapture>().Id, Is.EqualTo("abc"));
+            // Assert
+            serviceProvider.GetRequiredService<BaseCapture>().Id.ShouldBe("abc");
         }
         finally
         {
@@ -123,6 +130,7 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_PublishesFaultAfterRetriesExhausted()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
         var publishCapture = new CapturingEndpointProvider();
         var services = new ServiceCollection();
@@ -130,17 +138,13 @@ public class ConveyoHostedServiceDispatchTests
         services.AddSingleton<IBusRegistrationContext>(registrationContext);
         services.AddSingleton<IEndpointProvider>(publishCapture);
         services.AddSingleton<FirstCapture>();
-        ConveyoContext context = null!;
         services.AddConveyo(conveyo =>
         {
             conveyo.Map<SharedMessage>("conveyo:test.shared.v1");
             conveyo.AddConsumer<FirstSharedMessageConsumer>();
-            context = conveyo.Context;
         });
 
         await using var serviceProvider = services.BuildServiceProvider();
-
-        Assert.That(context.UrnFor(typeof(Fault<SharedMessage>)), Is.EqualTo("conveyo:test.shared.v1.fault"));
 
         var hostedService = serviceProvider.GetServices<IHostedService>().Single();
         await hostedService.StartAsync(CancellationToken.None);
@@ -157,19 +161,23 @@ public class ConveyoHostedServiceDispatchTests
 
             var first = new InvalidOperationException("first attempt failed");
             var second = new InvalidOperationException("second attempt failed", new ArgumentException("inner cause"));
+
+            // Act
             await registrationContext.RaiseFaultAsync(envelope, [first, second]);
 
+            // Assert
             var fault = publishCapture.Published.OfType<Fault<SharedMessage>>().Single();
-            Assert.That(fault.FaultedMessageId, Is.EqualTo(failedMessageId));
-            Assert.That(fault.Message.Value, Is.EqualTo("boom"));
-            Assert.That(fault.Exceptions, Has.Length.EqualTo(2));
-            Assert.That(fault.Exceptions[0].ExceptionType, Is.EqualTo("System.InvalidOperationException"));
-            Assert.That(fault.Exceptions[0].Message, Is.EqualTo(ExceptionInfo.RedactedMessage));
-            Assert.That(fault.Exceptions[0].StackTrace, Is.Null);
-            Assert.That(fault.Exceptions[1].ExceptionType, Is.EqualTo("System.InvalidOperationException"));
-            Assert.That(fault.Exceptions[1].Message, Is.EqualTo(ExceptionInfo.RedactedMessage));
-            Assert.That(fault.Exceptions[1].StackTrace, Is.Null);
-            Assert.That(fault.Exceptions[1].InnerException, Is.Null);
+            serviceProvider.GetRequiredService<ConveyoContext>().UrnFor(typeof(Fault<SharedMessage>)).ShouldBe("conveyo:test.shared.v1.fault");
+            fault.FaultedMessageId.ShouldBe(failedMessageId);
+            fault.Message.Value.ShouldBe("boom");
+            fault.Exceptions.Length.ShouldBe(2);
+            fault.Exceptions[0].ExceptionType.ShouldBe("System.InvalidOperationException");
+            fault.Exceptions[0].Message.ShouldBe(ExceptionInfo.RedactedMessage);
+            fault.Exceptions[0].StackTrace.ShouldBeNull();
+            fault.Exceptions[1].ExceptionType.ShouldBe("System.InvalidOperationException");
+            fault.Exceptions[1].Message.ShouldBe(ExceptionInfo.RedactedMessage);
+            fault.Exceptions[1].StackTrace.ShouldBeNull();
+            fault.Exceptions[1].InnerException.ShouldBeNull();
         }
         finally
         {
@@ -180,6 +188,7 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_IncludesFaultExceptionDetailsWhenConfigured()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
         var publishCapture = new CapturingEndpointProvider();
         var services = new ServiceCollection();
@@ -208,13 +217,16 @@ public class ConveyoHostedServiceDispatchTests
             };
 
             var exception = new InvalidOperationException("outer message", new ArgumentException("inner message"));
+
+            // Act
             await registrationContext.RaiseFaultAsync(envelope, [exception]);
 
+            // Assert
             var faultException = publishCapture.Published.OfType<Fault<SharedMessage>>().Single().Exceptions.Single();
-            Assert.That(faultException.Message, Is.EqualTo("outer message"));
-            Assert.That(faultException.InnerException, Is.Not.Null);
-            Assert.That(faultException.InnerException!.Message, Is.EqualTo("inner message"));
-            Assert.That(faultException.InnerException.ExceptionType, Is.EqualTo("System.ArgumentException"));
+            faultException.Message.ShouldBe("outer message");
+            faultException.InnerException.ShouldNotBeNull();
+            faultException.InnerException!.Message.ShouldBe("inner message");
+            faultException.InnerException.ExceptionType.ShouldBe("System.ArgumentException");
         }
         finally
         {
@@ -225,6 +237,7 @@ public class ConveyoHostedServiceDispatchTests
     [Test]
     public async Task HostedService_PublishesFaultOnConsumerFailure()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
         var capture = new CapturingEndpointProvider();
         var services = new ServiceCollection();
@@ -251,10 +264,12 @@ public class ConveyoHostedServiceDispatchTests
                 Message = JsonSerializer.SerializeToElement(new { Value = "boom" })
             };
 
+            // Act
             await registrationContext.RaiseFaultAsync(envelope, [new InvalidOperationException("boom")]);
 
-            Assert.That(capture.Sent, Is.Empty);
-            Assert.That(capture.Published.OfType<Fault<SharedMessage>>(), Has.Exactly(1).Items);
+            // Assert
+            capture.Sent.ShouldBeEmpty();
+            capture.Published.OfType<Fault<SharedMessage>>().Count().ShouldBe(1);
         }
         finally
         {
@@ -267,7 +282,7 @@ public class ConveyoHostedServiceDispatchTests
     // conveyo-fault-reason = "deserialization-failed" before they ever reach OnMessageAsync.
     // See: Conveyo.RabbitMQ.Test EnvelopeSerializerTests for that contract.
 
-    private static (ServiceProvider Provider, ConveyoContext Context) BuildServiceProvider(
+    private static ServiceProvider BuildServiceProvider(
         FakeBusRegistrationContext registrationContext,
         Action<TestBuilder> configure)
     {
@@ -276,17 +291,19 @@ public class ConveyoHostedServiceDispatchTests
         services.AddSingleton<IBusRegistrationContext>(registrationContext);
         services.AddSingleton<IEndpointProvider>(new FakeEndpointProvider());
 
-        ConveyoContext context = null!;
         services.AddConveyo(conveyo =>
         {
             configure(new TestBuilder(services, conveyo));
-            context = conveyo.Context;
         });
 
-        return (services.BuildServiceProvider(), context);
+        return services.BuildServiceProvider();
     }
 
-    private sealed record TestBuilder(IServiceCollection Services, IConveyoBuilder Conveyo);
+    private sealed record TestBuilder(IServiceCollection Services, IConveyoBuilder Conveyo)
+    {
+        public void ReceiveEndpoint<TConsumer>(Uri address) where TConsumer : class =>
+            Conveyo.Registration.RegisterConsumerEndpoint(typeof(TConsumer), address);
+    }
 
     private static MessageEnvelope CreateEnvelope<TMessage>(object payload, Uri destinationAddress)
         where TMessage : class

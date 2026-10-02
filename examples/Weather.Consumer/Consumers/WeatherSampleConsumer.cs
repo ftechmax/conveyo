@@ -63,7 +63,7 @@ public class WeatherSampleConsumer
                 }
 
                 using var buffer = new MemoryStream();
-                await stream.CopyToAsync(buffer);
+                await stream.CopyToAsync(buffer, context.CancellationToken);
                 sizeBytes = (int)buffer.Length;
                 var preview = Preview(Encoding.UTF8.GetString(buffer.ToArray()));
                 Console.WriteLine($"Feed stream received: {sizeBytes} bytes — preview: {preview}");

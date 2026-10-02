@@ -89,7 +89,7 @@ internal static class MessageDispatchBuilder
                 nameof(BuildMessageDataAccessor), messageType, itemType);
             accessors.Add(build(property));
         }
-        return accessors;
+        return accessors.AsReadOnly();
     }
 
     private static MessageDataPropertyAccessor BuildMessageDataAccessor<TMessage, TItem>(PropertyInfo property)

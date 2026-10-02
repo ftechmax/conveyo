@@ -9,9 +9,8 @@ internal interface IBusRegistrationContext
     event Func<MessageEnvelope, CancellationToken, Task>? OnMessageAsync;
 
     /// <summary>
-    /// Raised after the transport has exhausted retries on a delivery. Subscribers are expected to
-    /// publish <see cref="Fault{T}"/> for the failed message; the transport then routes the original
-    /// delivery to the error queue once this completes.
+    /// Invokes fault publication after dispatch retries are exhausted and before error-queue routing.
+    /// Fault publication failures do not prevent the transport from routing the original delivery.
     /// </summary>
     event Func<MessageEnvelope, IReadOnlyList<Exception>, CancellationToken, Task>? OnFaultAsync;
 }

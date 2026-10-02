@@ -6,9 +6,7 @@ internal sealed class RabbitMqEndpointProvider(
     RabbitMqBusRegistrationContext rabbitMqContext,
     ConveyoContext conveyoContext) : IEndpointProvider
 {
-    private readonly Dictionary<string, Task> _lazyDeclareTasks = new(StringComparer.Ordinal);
     private readonly HostInfo _hostInfo = conveyoContext.HostInfo;
-    private readonly object _lazyDeclareLock = new();
 
     public IPublishEndpoint GetPublishEndpoint<T>() where T : class
     {
@@ -33,36 +31,8 @@ internal sealed class RabbitMqEndpointProvider(
         return new RabbitMqSendEndpoint(rabbitMqContext.CreatePublisherChannelAsync, queueName, _hostInfo, urn);
     }
 
-    private async Task EnsureExchangeDeclaredAsync(IChannel channel, string exchange, CancellationToken cancellationToken)
-    {
-        Task task;
-        lock (_lazyDeclareLock)
-        {
-            if (!_lazyDeclareTasks.TryGetValue(exchange, out task!))
-            {
-                task = RabbitMqTopology.DeclareDurableFanoutExchangeAsync(channel, exchange, cancellationToken);
-                _lazyDeclareTasks[exchange] = task;
-            }
-        }
-
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Don't cache a failed declare, let the next caller retry.
-            lock (_lazyDeclareLock)
-            {
-                if (_lazyDeclareTasks.TryGetValue(exchange, out var cached) && ReferenceEquals(cached, task))
-                {
-                    _lazyDeclareTasks.Remove(exchange);
-                }
-            }
-
-            throw;
-        }
-    }
+    private static Task EnsureExchangeDeclaredAsync(IChannel channel, string exchange, CancellationToken cancellationToken)
+        => RabbitMqTopology.DeclareDurableFanoutExchangeAsync(channel, exchange, cancellationToken);
 
     private static bool IsFaultType(Type type)
         => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Fault<>);

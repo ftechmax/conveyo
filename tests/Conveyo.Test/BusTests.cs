@@ -8,26 +8,32 @@ public class BusTests
     [Test]
     public async Task Publish_DelegatesToPublishEndpointForMessageType()
     {
+        // Arrange
         var provider = new FakeEndpointProvider();
         var bus = new Bus(provider);
 
+        // Act
         await bus.Publish(new ExampleEvent("hello"));
 
-        Assert.That(provider.PublishEndpoint.Published.Count, Is.EqualTo(1));
-        Assert.That(provider.PublishEndpoint.Published[0], Is.InstanceOf<ExampleEvent>());
-        Assert.That(provider.SendEndpoint.Sent, Is.Empty);
+        // Assert
+        provider.PublishEndpoint.Published.Count.ShouldBe(1);
+        provider.PublishEndpoint.Published[0].ShouldBeOfType<ExampleEvent>();
+        provider.SendEndpoint.Sent.ShouldBeEmpty();
     }
 
     [Test]
     public async Task Send_DelegatesToSendEndpointForMessageType()
     {
+        // Arrange
         var provider = new FakeEndpointProvider();
         var bus = new Bus(provider);
 
+        // Act
         await bus.Send(new ExampleEvent("hi"));
 
-        Assert.That(provider.SendEndpoint.Sent.Count, Is.EqualTo(1));
-        Assert.That(provider.PublishEndpoint.Published, Is.Empty);
+        // Assert
+        provider.SendEndpoint.Sent.Count.ShouldBe(1);
+        provider.PublishEndpoint.Published.ShouldBeEmpty();
     }
 
     private sealed class FakeEndpointProvider : IEndpointProvider

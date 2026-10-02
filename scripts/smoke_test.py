@@ -9,12 +9,7 @@ Run from anywhere — paths are resolved relative to this file:
     python3 scripts/smoke_test.py
 
 Requires `dotnet` plus RabbitMQ on 127.0.0.1:5672 and Postgres on
-127.0.0.1:5432. For cluster-backed local runs, forward those ports manually
-before starting the smoke test.
-
-    # Example manual forwards:
-    # kubectl port-forward -n rabbitmq-system svc/rabbitmq 5672:5672
-    # kubectl port-forward -n postgres-system svc/postgres 5432:5432
+127.0.0.1:5432. See docs/testing.md for disposable Compose dependencies.
 """
 from __future__ import annotations
 
@@ -32,8 +27,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Sequence
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "examples"
@@ -87,26 +82,26 @@ class ManagedProcess:
 
 
 def _spawn(name: str, cmd: Sequence[str], log_path: pathlib.Path, *,
-           cwd: Optional[pathlib.Path] = None,
-           env: Optional[dict] = None) -> ManagedProcess:
+           cwd: pathlib.Path | None = None,
+           env: dict | None = None) -> ManagedProcess:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.unlink(missing_ok=True)
-    log_file = open(log_path, "wb", buffering=0)
-    proc = subprocess.Popen(
-        list(cmd),
-        cwd=str(cwd) if cwd else None,
-        env=env,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+    with log_path.open("wb", buffering=0) as log_file:
+        proc = subprocess.Popen(
+            list(cmd),
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
     return ManagedProcess(name=name, proc=proc, log_path=log_path)
 
 
 def wait_for_tcp(host: str, port: int, timeout: float, name: str) -> None:
     """Wait until a TCP endpoint accepts connections."""
     deadline = time.monotonic() + timeout
-    last_err: Optional[OSError] = None
+    last_err: OSError | None = None
     while time.monotonic() < deadline:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.5)
@@ -204,7 +199,7 @@ def http_post_json(url: str, payload: dict, *, timeout: float = 10.0) -> int:
 def http_post_multipart(url: str, fields: dict, files: dict,
                         *, timeout: float = 15.0) -> int:
     boundary = "----conveyo-smoke-" + uuid.uuid4().hex
-    chunks: List[bytes] = []
+    chunks: list[bytes] = []
     for name, value in fields.items():
         chunks.append(f"--{boundary}\r\n".encode())
         chunks.append(
@@ -228,9 +223,9 @@ def http_post_multipart(url: str, fields: dict, files: dict,
         return resp.status
 
 
-def wait_for_http(url: str, timeout: float, process: Optional[ManagedProcess] = None) -> None:
+def wait_for_http(url: str, timeout: float, process: ManagedProcess | None = None) -> None:
     deadline = time.monotonic() + timeout
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(url, timeout=2.0) as resp:
@@ -446,13 +441,13 @@ def scenario_failure_routing(producer_url: str,
         FAILURE_TIMEOUT)
 
 
-def build_examples() -> None:
+def build_examples(configuration: str) -> None:
     print("[build] dotnet build examples...", flush=True)
     for proj in (PRODUCER_PROJ / "Weather.Producer.csproj",
                  CONSUMER_PROJ / "Weather.Consumer.csproj"):
         subprocess.check_call(
             ["dotnet", "build", str(proj), "-nologo", "-clp:NoSummary",
-             "-v:q", "-c", "Debug"],
+             "-v:q", "-c", configuration],
             cwd=str(ROOT))
 
 
@@ -461,12 +456,12 @@ def run(args: argparse.Namespace) -> int:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_build:
-        build_examples()
+        build_examples(args.configuration)
 
     producer_log = log_dir / "producer.log"
     consumer_log = log_dir / "consumer.log"
-    producer: Optional[ManagedProcess] = None
-    consumer: Optional[ManagedProcess] = None
+    producer: ManagedProcess | None = None
+    consumer: ManagedProcess | None = None
 
     base_env = os.environ.copy()
     base_env.setdefault("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
@@ -490,7 +485,7 @@ def run(args: argparse.Namespace) -> int:
             ["dotnet", "run",
              "--project", str(CONSUMER_PROJ),
              "--no-build", "--no-launch-profile",
-             "-c", "Debug"],
+             "-c", args.configuration],
             consumer_log, cwd=ROOT, env=base_env)
         wait_for_initial_line(
             consumer, re.compile(r"\[SMOKE\] Weather\.Consumer ready"),
@@ -503,7 +498,7 @@ def run(args: argparse.Namespace) -> int:
             ["dotnet", "run",
              "--project", str(PRODUCER_PROJ),
              "--no-build", "--no-launch-profile",
-             "-c", "Debug"],
+             "-c", args.configuration],
             producer_log, cwd=ROOT, env=producer_env)
         wait_for_initial_line(
             producer, re.compile(r"\[SMOKE\] Weather\.Producer ready"),
@@ -532,7 +527,7 @@ def run(args: argparse.Namespace) -> int:
                  args.producer_url, producer_log, consumer_log)),
         ]
 
-        results: List[TestResult] = []
+        results: list[TestResult] = []
         for name, body in scenarios:
             print(f"[case] {name} ...", flush=True)
             case_result = _run_case(name, body)
@@ -563,17 +558,19 @@ def run(args: argparse.Namespace) -> int:
                 p.terminate()
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--producer-url", default=DEFAULT_PRODUCER_URL,
                    help="URL the producer should bind to "
                         f"(default: {DEFAULT_PRODUCER_URL})")
     p.add_argument("--log-dir",
-                   default=str(ROOT / "scripts" / "_smoke_logs"),
+                   default=str(ROOT / "artifacts" / "smoke"),
                    help="Where to write process logs")
     p.add_argument("--skip-build", action="store_true",
                    help="Skip `dotnet build` (assume binaries are current)")
+    p.add_argument("--configuration", choices=("Debug", "Release"), default="Debug",
+                   help="Build and run configuration (default: Debug)")
     p.add_argument("--fail-fast", action="store_true",
                    help="Stop on first failing scenario")
     return p.parse_args(argv)

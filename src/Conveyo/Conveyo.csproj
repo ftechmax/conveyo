@@ -17,6 +17,7 @@
     <InternalsVisibleTo Include="Conveyo.RabbitMQ" />
     <InternalsVisibleTo Include="Conveyo.Test" />
     <InternalsVisibleTo Include="Conveyo.RabbitMQ.Test" />
+    <InternalsVisibleTo Include="Conveyo.Storage.Postgres.Test" />
   </ItemGroup>
 
 </Project>

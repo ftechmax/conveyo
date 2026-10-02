@@ -11,42 +11,68 @@ namespace Conveyo.Test;
 public class ConveyoHostedServiceMessageDataTests
 {
     [Test]
-    public Task HostedService_HydratesStringMessageDataFromRawUtf8() =>
-        RunHydrationTest<StringPayloadMessage, StringPayloadConsumer, StringCapture>(
-            urn: "conveyo:test.string-payload.v1",
-            payload: Encoding.UTF8.GetBytes("ZzzzZZZZ"),
-            assertResult: capture => Assert.That(capture.Value, Is.EqualTo("ZzzzZZZZ")));
-
-    [Test]
-    public Task HostedService_HydratesByteArrayMessageDataFromRawBytes() =>
-        RunHydrationTest<BytesPayloadMessage, BytesPayloadConsumer, BytesCapture>(
-            urn: "conveyo:test.bytes-payload.v1",
-            payload: [0, 1, 2, 3, 4, 5],
-            assertResult: capture => Assert.That(capture.Value, Is.EqualTo(new byte[] { 0, 1, 2, 3, 4, 5 })));
-
-    [Test]
-    public Task HostedService_HydratesStreamMessageDataAsReadableStream() =>
-        RunHydrationTest<StreamPayloadMessage, StreamPayloadConsumer, StreamCapture>(
-            urn: "conveyo:test.stream-payload.v1",
-            payload: Encoding.UTF8.GetBytes("SOEPAHSTREAmmmmm"),
-            assertResult: capture => Assert.That(capture.Value, Is.EqualTo("SOEPAHSTREAmmmmm")));
-
-    [Test]
-    public void HostedService_RejectsStringMessageDataAboveConfiguredLimit()
+    public async Task HostedService_HydratesStringMessageDataFromRawUtf8()
     {
-        var ex = Assert.ThrowsAsync<InvalidDataException>(() =>
-            RunHydrationTest<StringPayloadMessage, StringPayloadConsumer, StringCapture>(
-                urn: "conveyo:test.string-payload.v1",
-                payload: Encoding.UTF8.GetBytes("12345"),
-                assertResult: _ => throw new AssertionException("Oversized MessageData should not reach the consumer."),
-                configure: builder => builder.MaxMessageDataBytes(4)));
+        // Arrange
+        var payload = Encoding.UTF8.GetBytes("ZzzzZZZZ");
 
-        Assert.That(ex!.Message, Does.Contain("exceeds the configured 4 byte limit"));
+        // Act
+        var capture = await Hydrate<StringPayloadMessage, StringPayloadConsumer, StringCapture>(
+            "conveyo:test.string-payload.v1", payload);
+
+        // Assert
+        capture.Value.ShouldBe("ZzzzZZZZ");
     }
 
     [Test]
-    public void HostedService_RejectsInlineDataUriPayloadAboveConfiguredLimit()
+    public async Task HostedService_HydratesByteArrayMessageDataFromRawBytes()
     {
+        // Arrange
+        byte[] payload = [0, 1, 2, 3, 4, 5];
+
+        // Act
+        var capture = await Hydrate<BytesPayloadMessage, BytesPayloadConsumer, BytesCapture>(
+            "conveyo:test.bytes-payload.v1", payload);
+
+        // Assert
+        capture.Value.ShouldBe(payload);
+    }
+
+    [Test]
+    public async Task HostedService_HydratesStreamMessageDataAsReadableStream()
+    {
+        // Arrange
+        var payload = Encoding.UTF8.GetBytes("SOEPAHSTREAmmmmm");
+
+        // Act
+        var capture = await Hydrate<StreamPayloadMessage, StreamPayloadConsumer, StreamCapture>(
+            "conveyo:test.stream-payload.v1", payload);
+
+        // Assert
+        capture.Value.ShouldBe("SOEPAHSTREAmmmmm");
+    }
+
+    [Test]
+    public async Task HostedService_RejectsStringMessageDataAboveConfiguredLimit()
+    {
+        // Arrange
+        var payload = Encoding.UTF8.GetBytes("12345");
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidDataException>(() =>
+            Hydrate<StringPayloadMessage, StringPayloadConsumer, StringCapture>(
+                urn: "conveyo:test.string-payload.v1",
+                payload: payload,
+                configure: builder => builder.MaxMessageDataBytes(4)));
+
+        // Assert
+        ex.Message.ShouldContain("exceeds the configured 4 byte limit");
+    }
+
+    [Test]
+    public async Task HostedService_RejectsInlineDataUriPayloadAboveConfiguredLimit()
+    {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
         var endpointProvider = new FakeEndpointProvider(repository: null!);
 
@@ -62,32 +88,33 @@ public class ConveyoHostedServiceMessageDataTests
             i.AddConsumer<StringPayloadConsumer>();
         });
 
-        var ex = Assert.ThrowsAsync<InvalidDataException>(async () =>
+        await using var serviceProvider = services.BuildServiceProvider();
+        var hostedService = serviceProvider.GetServices<IHostedService>().Single();
+        await hostedService.StartAsync(CancellationToken.None);
+        try
         {
-            await using var serviceProvider = services.BuildServiceProvider();
-            var hostedService = serviceProvider.GetServices<IHostedService>().Single();
-            await hostedService.StartAsync(CancellationToken.None);
-            try
+            var dataUri = "data:text/plain;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes("12345"));
+            var envelope = CreateEnvelope("conveyo:test.inline-payload-limit.v1", new
             {
-                var dataUri = "data:text/plain;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes("12345"));
-                var envelope = CreateEnvelope("conveyo:test.inline-payload-limit.v1", new
-                {
-                    weatherData = new { address = dataUri }
-                });
-                await registrationContext.DeliverAsync(envelope);
-            }
-            finally
-            {
-                await hostedService.StopAsync(CancellationToken.None);
-            }
-        });
+                payload = new { address = dataUri }
+            });
 
-        Assert.That(ex!.Message, Does.Contain("exceeds the configured 4 byte limit"));
+            // Act
+            var ex = await Should.ThrowAsync<InvalidDataException>(() => registrationContext.DeliverAsync(envelope));
+
+            // Assert
+            ex.Message.ShouldContain("exceeds the configured 4 byte limit");
+        }
+        finally
+        {
+            await hostedService.StopAsync(CancellationToken.None);
+        }
     }
 
     [Test]
     public async Task HostedService_HydratesInlineDataUriPayloadWithoutRepository()
     {
+        // Arrange
         var registrationContext = new FakeBusRegistrationContext();
         var endpointProvider = new FakeEndpointProvider(repository: null!);
 
@@ -111,12 +138,14 @@ public class ConveyoHostedServiceMessageDataTests
             var dataUri = "data:text/plain;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes("inline-hello"));
             var envelope = CreateEnvelope("conveyo:test.inline-payload.v1", new
             {
-                weatherData = new { address = dataUri }
+                payload = new { address = dataUri }
             });
 
+            // Act
             await registrationContext.DeliverAsync(envelope);
 
-            Assert.That(serviceProvider.GetRequiredService<StringCapture>().Value, Is.EqualTo("inline-hello"));
+            // Assert
+            serviceProvider.GetRequiredService<StringCapture>().Value.ShouldBe("inline-hello");
         }
         finally
         {
@@ -125,22 +154,25 @@ public class ConveyoHostedServiceMessageDataTests
     }
 
     [Test]
-    public void HostedService_LimitsStreamMessageDataReadByConsumer()
+    public async Task HostedService_LimitsStreamMessageDataReadByConsumer()
     {
-        var ex = Assert.ThrowsAsync<InvalidDataException>(() =>
-            RunHydrationTest<StreamPayloadMessage, StreamPayloadConsumer, StreamCapture>(
+        // Arrange
+        var payload = Encoding.UTF8.GetBytes("12345");
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidDataException>(() =>
+            Hydrate<StreamPayloadMessage, StreamPayloadConsumer, StreamCapture>(
                 urn: "conveyo:test.stream-payload.v1",
-                payload: Encoding.UTF8.GetBytes("12345"),
-                assertResult: _ => throw new AssertionException("Oversized MessageData should not be fully read."),
+                payload: payload,
                 configure: builder => builder.MaxMessageDataBytes(4)));
 
-        Assert.That(ex!.Message, Does.Contain("exceeds the configured 4 byte limit"));
+        // Assert
+        ex.Message.ShouldContain("exceeds the configured 4 byte limit");
     }
 
-    private static async Task RunHydrationTest<TMessage, TConsumer, TCapture>(
+    private static async Task<TCapture> Hydrate<TMessage, TConsumer, TCapture>(
         string urn,
         byte[] payload,
-        Action<TCapture> assertResult,
         Action<IConveyoBuilder>? configure = null)
         where TMessage : class
         where TConsumer : class, IConsumer<TMessage>
@@ -172,12 +204,12 @@ public class ConveyoHostedServiceMessageDataTests
             var address = repository.Store(payload);
             var envelope = CreateEnvelope(urn, new
             {
-                weatherData = new { address = address.ToString() }
+                payload = new { address = address.ToString() }
             });
 
             await registrationContext.DeliverAsync(envelope);
 
-            assertResult(serviceProvider.GetRequiredService<TCapture>());
+            return serviceProvider.GetRequiredService<TCapture>();
         }
         finally
         {
@@ -196,7 +228,7 @@ public class ConveyoHostedServiceMessageDataTests
 
     private sealed record StringPayloadMessage
     {
-        public MessageData<string> WeatherData { get; init; } = null!;
+        public MessageData<string> Payload { get; init; } = null!;
     }
 
     private sealed class StringCapture
@@ -208,14 +240,14 @@ public class ConveyoHostedServiceMessageDataTests
     {
         public Task Consume(ConsumeContext<StringPayloadMessage> context)
         {
-            capture.Value = context.Message.WeatherData.Value;
+            capture.Value = context.Message.Payload.Value;
             return Task.CompletedTask;
         }
     }
 
     private sealed record BytesPayloadMessage
     {
-        public MessageData<byte[]> WeatherData { get; init; } = null!;
+        public MessageData<byte[]> Payload { get; init; } = null!;
     }
 
     private sealed class BytesCapture
@@ -227,14 +259,14 @@ public class ConveyoHostedServiceMessageDataTests
     {
         public Task Consume(ConsumeContext<BytesPayloadMessage> context)
         {
-            capture.Value = context.Message.WeatherData.Value;
+            capture.Value = context.Message.Payload.Value;
             return Task.CompletedTask;
         }
     }
 
     private sealed record StreamPayloadMessage
     {
-        public MessageData<Stream> WeatherData { get; init; } = null!;
+        public MessageData<Stream> Payload { get; init; } = null!;
     }
 
     private sealed class StreamCapture
@@ -246,8 +278,8 @@ public class ConveyoHostedServiceMessageDataTests
     {
         public async Task Consume(ConsumeContext<StreamPayloadMessage> context)
         {
-            await using var stream = context.Message.WeatherData.Value;
-            Assert.That(stream, Is.Not.Null);
+            await using var stream = context.Message.Payload.Value;
+            stream.ShouldNotBeNull();
             using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
             capture.Value = await reader.ReadToEndAsync(CancellationToken.None);
         }

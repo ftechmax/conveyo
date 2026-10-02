@@ -1,0 +1,12 @@
+{
+  "sequence": 9223372036854775807,
+  "amount": 1234567890.125,
+  "kind": 1,
+  "note": null,
+  "readings": [
+    1,
+    2.5,
+    -3
+  ],
+  "binary": "AAH+/w=="
+}

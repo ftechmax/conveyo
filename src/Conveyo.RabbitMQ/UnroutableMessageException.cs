@@ -1,9 +1,8 @@
 namespace Conveyo.RabbitMQ;
 
 /// <summary>
-/// Thrown when a <see cref="ISendEndpoint.Send{T}"/> publish is returned by the broker because no consumer
-/// queue is bound to receive it. This implements the documented "unroutable = failure" command semantic:
-/// a Send completes only after the broker has confirmed the message was routed to at least one queue.
+/// Thrown when the broker returns a mandatory <see cref="ISendEndpoint.Send{T}"/>
+/// publish as unroutable.
 /// </summary>
 public sealed class UnroutableMessageException : Exception
 {

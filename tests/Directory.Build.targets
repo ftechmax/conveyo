@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <VSTestTestCaseFilter Condition="'$(VSTestTestCaseFilter)' == ''">TestCategory!=Integration</VSTestTestCaseFilter>
+  </PropertyGroup>
+</Project>

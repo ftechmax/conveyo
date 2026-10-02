@@ -12,21 +12,29 @@ internal sealed class RabbitMqConnectionManager(ILogger? logger = null)
 
     public async Task StartAsync(RabbitMqHostOptions options, CancellationToken cancellationToken)
     {
-        var factory = CreateConnectionFactory(options);
-        Connection = await ConnectAsync(factory, options, cancellationToken);
-        ConsumerChannel = await Connection.CreateChannelAsync(
-            options: new CreateChannelOptions(
-                publisherConfirmationsEnabled: false,
-                publisherConfirmationTrackingEnabled: false,
-                consumerDispatchConcurrency: options.ConsumerDispatchConcurrency),
-            cancellationToken: cancellationToken);
+        if (Connection is not null)
+        {
+            throw new InvalidOperationException(ErrorMessages.ConnectionAlreadyStarted);
+        }
 
-        // Apply prefetch to bound the number of unacknowledged in-flight deliveries.
-        await ConsumerChannel.BasicQosAsync(
-            prefetchSize: 0,
-            prefetchCount: options.PrefetchCount,
-            global: false,
-            cancellationToken: cancellationToken);
+        try
+        {
+            var factory = CreateConnectionFactory(options);
+            Connection = await ConnectAsync(factory, options, cancellationToken);
+            ConsumerChannel = await Connection.CreateChannelAsync(
+                options: new CreateChannelOptions(
+                    publisherConfirmationsEnabled: false,
+                    publisherConfirmationTrackingEnabled: false,
+                    consumerDispatchConcurrency: options.ConsumerDispatchConcurrency),
+                cancellationToken: cancellationToken);
+            await ConsumerChannel.BasicQosAsync(
+                prefetchSize: 0, prefetchCount: options.PrefetchCount, global: false, cancellationToken);
+        }
+        catch
+        {
+            await DisposeAsync();
+            throw;
+        }
     }
 
     public async Task<IChannel> CreatePublisherChannelAsync(CancellationToken cancellationToken)
@@ -53,18 +61,42 @@ internal sealed class RabbitMqConnectionManager(ILogger? logger = null)
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (ConsumerChannel is { } consumerChannel)
+        try
         {
-            await consumerChannel.CloseAsync(cancellationToken);
-            consumerChannel.Dispose();
-            ConsumerChannel = null;
+            if (ConsumerChannel is { IsOpen: true } consumerChannel)
+            {
+                await consumerChannel.CloseAsync(cancellationToken);
+            }
+            if (Connection is { IsOpen: true } connection)
+            {
+                await connection.CloseAsync(cancellationToken);
+            }
         }
-
-        if (Connection is { } connection)
+        finally
         {
-            await connection.CloseAsync(cancellationToken);
-            connection.Dispose();
-            Connection = null;
+            await DisposeAsync();
+        }
+    }
+
+    private async Task DisposeAsync()
+    {
+        var channel = ConsumerChannel;
+        var connection = Connection;
+        ConsumerChannel = null;
+        Connection = null;
+        try
+        {
+            if (channel is not null)
+            {
+                await channel.DisposeAsync();
+            }
+        }
+        finally
+        {
+            if (connection is not null)
+            {
+                await connection.DisposeAsync();
+            }
         }
     }
 

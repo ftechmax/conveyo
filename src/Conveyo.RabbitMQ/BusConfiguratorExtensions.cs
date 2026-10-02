@@ -11,8 +11,9 @@ public static class BusConfiguratorExtensions
         Action<IRabbitMqBusRegistrationContext, RabbitMqConfiguration> configure)
     {
         var config = new RabbitMqConfiguration();
-        var conveyoContext = builder.Context;
-        var context = new RabbitMqBusRegistrationContext(conveyoContext);
+        var registration = builder.Registration;
+        registration.EnsureOpen();
+        var context = new RabbitMqBusRegistrationContext(registration);
         configure(context, config);
 
         var hostOptions = config.HostOptions
@@ -26,7 +27,7 @@ public static class BusConfiguratorExtensions
         });
         builder.Services.AddSingleton<IRabbitMqBusRegistrationContext>(i => i.GetRequiredService<RabbitMqBusRegistrationContext>());
         builder.Services.AddSingleton<IBusRegistrationContext>(i => i.GetRequiredService<RabbitMqBusRegistrationContext>());
-        builder.Services.AddSingleton<IEndpointProvider>(i => ActivatorUtilities.CreateInstance<RabbitMqEndpointProvider>(i, conveyoContext));
+        builder.Services.AddSingleton<IEndpointProvider, RabbitMqEndpointProvider>();
     }
 
     public static void Host(

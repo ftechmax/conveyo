@@ -8,11 +8,28 @@
   ],
   "message": {
     "invoiceNumber": "INV-2026-0001",
-    "retryCount": 3,
-    "force": true
+    "customer": {
+      "customerId": "CUST-42",
+      "displayName": "Ada Lovelace"
+    },
+    "lines": [
+      {
+        "sku": "consulting",
+        "quantity": 2,
+        "unitPrice": 125.50
+      },
+      {
+        "sku": "support",
+        "quantity": 1,
+        "unitPrice": 75.00
+      }
+    ]
   },
   "sentTime": "2026-05-14T12:34:56.789Z",
-  "headers": null,
+  "headers": {
+    "tenant-id": "tenant-007",
+    "priority": "5"
+  },
   "host": {
     "machineName": "golden-host",
     "processName": "Conveyo.GoldenTests",

@@ -3,39 +3,29 @@ using System.Text.RegularExpressions;
 
 namespace Conveyo;
 
-internal sealed partial record ConveyoContext
+internal sealed partial class ConveyoContext
 {
     public const string FaultUrnSuffix = ".fault";
 
     [GeneratedRegex(@"\A[A-Za-z0-9._:\-]+\z")]
     private static partial Regex UrnCharacterSet();
 
-    internal readonly List<Type> _consumers = [];
-    internal readonly Dictionary<Type, List<Type>> _consumerMessages = [];
-    internal readonly Dictionary<Type, List<Uri>> _consumerEndpoints = [];
-    internal readonly Dictionary<Type, Uri> _endpointConventions = [];
-    internal readonly Dictionary<string, Type> _messageTypeLookup = [];
-    internal readonly Dictionary<Type, string> _urnsByType = [];
-    internal readonly Dictionary<Type, MessageDispatchInfo> DispatchInfo = [];
-
-    internal long MaxMessageDataBytes { get; set; } = ConveyoDefaults.MaxMessageDataBytes;
-
-    internal bool IncludeFaultExceptionDetails { get; set; }
-
-    public IReadOnlyList<Type> Consumers => _consumers;
-    public IReadOnlyDictionary<Type, List<Type>> ConsumerMessages => _consumerMessages;
-    public IReadOnlyDictionary<Type, List<Uri>> ConsumerEndpoints => _consumerEndpoints;
-    public IReadOnlyDictionary<Type, Uri> EndpointConventions => _endpointConventions;
-    public IReadOnlyDictionary<string, Type> MessageTypeLookup => _messageTypeLookup;
-    public IReadOnlyDictionary<Type, string> UrnsByType => _urnsByType;
-
+    public required IReadOnlyList<Type> Consumers { get; init; }
+    public required IReadOnlyDictionary<Type, IReadOnlyList<Type>> ConsumerMessages { get; init; }
+    public required IReadOnlyDictionary<Type, IReadOnlyList<Uri>> ConsumerEndpoints { get; init; }
+    public required IReadOnlyDictionary<Type, Uri> EndpointConventions { get; init; }
+    public required IReadOnlyDictionary<string, Type> MessageTypeLookup { get; init; }
+    public required IReadOnlyDictionary<Type, string> UrnsByType { get; init; }
+    public required IReadOnlyDictionary<Type, MessageDispatchInfo> DispatchInfo { get; init; }
+    public required long MaxMessageDataBytes { get; init; }
+    public required bool IncludeFaultExceptionDetails { get; init; }
     public required HostInfo HostInfo { get; init; }
 
     public string UrnFor(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
 
-        if (!_urnsByType.TryGetValue(type, out var urn))
+        if (!UrnsByType.TryGetValue(type, out var urn))
         {
             throw new InvalidOperationException(ErrorMessages.MessageTypeHasNoUrnMapping(type));
         }
@@ -43,26 +33,7 @@ internal sealed partial record ConveyoContext
         return urn;
     }
 
-    public Type? TypeForUrn(string urn) => _messageTypeLookup.GetValueOrDefault(urn);
-
-    internal void RegisterUrn(Type type, string urn)
-    {
-        ArgumentNullException.ThrowIfNull(type);
-        ValidateUrn(urn);
-
-        if (_messageTypeLookup.TryGetValue(urn, out var existingType) && existingType != type)
-        {
-            throw new InvalidOperationException(ErrorMessages.UrnAlreadyRegistered(urn, existingType, type));
-        }
-
-        if (_urnsByType.TryGetValue(type, out var previousUrn) && !string.Equals(previousUrn, urn, StringComparison.Ordinal))
-        {
-            _messageTypeLookup.Remove(previousUrn);
-        }
-
-        _urnsByType[type] = urn;
-        _messageTypeLookup[urn] = type;
-    }
+    public Type? TypeForUrn(string urn) => MessageTypeLookup.GetValueOrDefault(urn);
 
     internal static void ValidateUrn(string urn)
     {
@@ -84,7 +55,7 @@ internal sealed partial record ConveyoContext
 
     internal IReadOnlyList<Type> GetHandlersByMessage(Type type, Uri? destinationAddress = null)
     {
-        var handlers = _consumerMessages
+        var handlers = ConsumerMessages
             .Where(kvp => kvp.Value.Contains(type))
             .Select(kvp => kvp.Key)
             .ToList();
@@ -98,7 +69,7 @@ internal sealed partial record ConveyoContext
         var endpointHandlers = new List<Type>();
         foreach (var handler in handlers)
         {
-            if (!_consumerEndpoints.TryGetValue(handler, out var endpoints))
+            if (!ConsumerEndpoints.TryGetValue(handler, out var endpoints))
             {
                 continue;
             }

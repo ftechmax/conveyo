@@ -16,43 +16,62 @@ public class RabbitMqMessageDataConfigurationTests
     [Test]
     public void RegisterConsumer_StoresQueueEndpointAddress()
     {
-        var conveyoContext = new ConveyoContext { HostInfo = new HostInfo() };
-        var rabbitMqContext = new RabbitMqBusRegistrationContext(conveyoContext);
+        // Arrange
+        var services = new ServiceCollection();
 
-        rabbitMqContext.RegisterConsumer<ExampleConsumer>("example queue");
+        // Act
+        services.AddConveyo(builder =>
+        {
+            builder.Map<ExampleMessage>("conveyo:test.example.v1");
+            builder.AddConsumer<ExampleConsumer>();
+            builder.UsingRabbitMq((context, rabbit) =>
+            {
+                rabbit.Host("localhost", "/", _ => { });
+                rabbit.ReceiveEndpoint("example queue", endpoint => endpoint.ConfigureConsumer<ExampleConsumer>(context));
+            });
+        });
+        using var provider = services.BuildServiceProvider();
 
-        Assert.That(
-            conveyoContext.ConsumerEndpoints[typeof(ExampleConsumer)].Single().OriginalString,
-            Is.EqualTo("queue:example%20queue"));
+        // Assert
+        provider.GetRequiredService<ConveyoContext>().ConsumerEndpoints[typeof(ExampleConsumer)]
+            .Single().OriginalString.ShouldBe("queue:example%20queue");
     }
 
     [Test]
     public void UsingRabbitMq_ThrowsWhenHostIsNotConfigured()
     {
+        // Arrange
         var services = new ServiceCollection();
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        // Act
+        var ex = Should.Throw<InvalidOperationException>(() =>
             services.AddConveyo(builder =>
             {
                 builder.UsingRabbitMq((_, _) => { });
             }));
 
-        Assert.That(ex!.Message, Does.Contain("cfg.Host"));
+        // Assert
+        ex.Message.ShouldContain("cfg.Host");
     }
 
     [Test]
     public void PersistentJsonProperties_MarkMessagesAsPersistent()
     {
+        // Arrange
+
+        // Act
         var properties = RabbitMqMessageProperties.PersistentJson();
 
-        Assert.That(properties.ContentType, Is.EqualTo("application/json"));
-        Assert.That(properties.Persistent, Is.True);
-        Assert.That(properties.DeliveryMode, Is.EqualTo(DeliveryModes.Persistent));
+        // Assert
+        properties.ContentType.ShouldBe("application/json");
+        properties.Persistent.ShouldBeTrue();
+        properties.DeliveryMode.ShouldBe(DeliveryModes.Persistent);
     }
 
     [Test]
     public void ForEnvelope_CopiesEnvelopeFieldsToBasicProperties()
     {
+        // Arrange
         var messageId = Guid.NewGuid();
         var correlationId = Guid.NewGuid();
         var sentTime = new DateTime(2026, 5, 14, 10, 30, 0, DateTimeKind.Utc);
@@ -65,42 +84,45 @@ public class RabbitMqMessageDataConfigurationTests
             SentTime = sentTime
         };
 
+        // Act
         var properties = RabbitMqMessageProperties.ForEnvelope(envelope);
 
-        Assert.That(properties.ContentType, Is.EqualTo("application/json"));
-        Assert.That(properties.Persistent, Is.True);
-        Assert.That(properties.MessageId, Is.EqualTo(messageId.ToString()));
-        Assert.That(properties.CorrelationId, Is.EqualTo(correlationId.ToString()));
-        Assert.That(properties.Type, Is.EqualTo("conveyo:orders.order-created.v2"));
-        Assert.That(properties.Timestamp.UnixTime,
-            Is.EqualTo(new DateTimeOffset(sentTime).ToUnixTimeSeconds()));
-        Assert.That(properties.Headers, Is.Not.Null);
-        Assert.That(properties.Headers!["conveyo-version"],
-            Is.EqualTo(MessageEnvelope.CurrentEnvelopeVersion));
+        // Assert
+        properties.ContentType.ShouldBe("application/json");
+        properties.Persistent.ShouldBeTrue();
+        properties.MessageId.ShouldBe(messageId.ToString());
+        properties.CorrelationId.ShouldBe(correlationId.ToString());
+        properties.Type.ShouldBe("conveyo:orders.order-created.v2");
+        properties.Timestamp.UnixTime.ShouldBe(new DateTimeOffset(sentTime).ToUnixTimeSeconds());
+        properties.Headers.ShouldNotBeNull();
+        properties.Headers!["conveyo-version"].ShouldBe(MessageEnvelope.CurrentEnvelopeVersion);
     }
 
     [Test]
     public void ForEnvelope_OmitsUnsetOptionalProperties()
     {
+        // Arrange
         var envelope = new MessageEnvelope
         {
             EnvelopeVersion = MessageEnvelope.CurrentEnvelopeVersion,
             MessageType = ["conveyo:test.sample.v1"]
         };
 
+        // Act
         var properties = RabbitMqMessageProperties.ForEnvelope(envelope);
 
-        Assert.That(properties.MessageId, Is.Null.Or.Empty);
-        Assert.That(properties.CorrelationId, Is.Null.Or.Empty);
-        Assert.That(properties.Timestamp.UnixTime, Is.EqualTo(0));
-        Assert.That(properties.Type, Is.EqualTo("conveyo:test.sample.v1"));
-        Assert.That(properties.Headers!["conveyo-version"],
-            Is.EqualTo(MessageEnvelope.CurrentEnvelopeVersion));
+        // Assert
+        properties.MessageId.ShouldBeNullOrEmpty();
+        properties.CorrelationId.ShouldBeNullOrEmpty();
+        properties.Timestamp.UnixTime.ShouldBe(0);
+        properties.Type.ShouldBe("conveyo:test.sample.v1");
+        properties.Headers!["conveyo-version"].ShouldBe(MessageEnvelope.CurrentEnvelopeVersion);
     }
 
     [Test]
     public void CreateConnectionFactory_UsesExternalAuthWhenCertificateIsAuthenticationIdentity()
     {
+        // Arrange
         var options = new RabbitMqHostOptions
         {
             ClientName = "test",
@@ -113,12 +135,14 @@ public class RabbitMqMessageDataConfigurationTests
             }
         };
 
+        // Act
         var factory = RabbitMqConnectionManager.CreateConnectionFactory(options);
         var authMechanisms = factory.AuthMechanisms.ToList();
 
-        Assert.That(factory.Ssl.Enabled, Is.True);
-        Assert.That(authMechanisms, Has.Count.EqualTo(1));
-        Assert.That(authMechanisms.Single(), Is.TypeOf<ExternalMechanismFactory>());
+        // Assert
+        factory.Ssl.Enabled.ShouldBeTrue();
+        authMechanisms.Count().ShouldBe(1);
+        authMechanisms.Single().GetType().ShouldBe(typeof(ExternalMechanismFactory));
     }
 
 }

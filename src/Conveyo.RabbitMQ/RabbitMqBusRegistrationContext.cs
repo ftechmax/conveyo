@@ -4,12 +4,20 @@ using RabbitMQ.Client.Events;
 
 namespace Conveyo.RabbitMQ;
 
-internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptions) : IRabbitMqBusRegistrationContext, IBusRegistrationContext
+internal sealed class RabbitMqBusRegistrationContext(ConveyoRegistration registration) : IRabbitMqBusRegistrationContext, IBusRegistrationContext
 {
-    private readonly Dictionary<string, List<Type>> _consumers = new(StringComparer.Ordinal);
+    private ConveyoContext Context => registration.Context;
 
+    // The built context is immutable, so the groupings are derived once. Nothing is cached while
+    // registration is still open, because Context throws until it completes.
+    private ILookup<string, Type> Queues => _queues ??= Context.ConsumerEndpoints
+        .SelectMany(pair => pair.Value.Select(address => (Queue: QueueAddress.GetQueueName(address), Consumer: pair.Key)))
+        .ToLookup(endpoint => endpoint.Queue, endpoint => endpoint.Consumer, StringComparer.Ordinal);
+
+    private ILookup<string, Type>? _queues;
     private RabbitMqHostOptions? _hostOptions;
     private ILogger? _logger;
+    private CancellationTokenSource? _stopping;
     private RabbitMqConnectionManager? _connectionManager;
 
     public IConnection? Connection => _connectionManager?.Connection;
@@ -36,7 +44,7 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        _hostOptions = options;
+        _hostOptions = options with { };
     }
 
     public void SetLogger(ILogger<RabbitMqBusRegistrationContext> logger)
@@ -50,25 +58,7 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
 
-        if (!_consumers.TryGetValue(queueName, out var consumerTypes))
-        {
-            consumerTypes = [];
-            _consumers[queueName] = consumerTypes;
-        }
-
-        consumerTypes.Add(typeof(T));
-
-        if (!conveyoOptions._consumerEndpoints.TryGetValue(typeof(T), out var endpoints))
-        {
-            endpoints = [];
-            conveyoOptions._consumerEndpoints[typeof(T)] = endpoints;
-        }
-
-        var endpointAddress = QueueAddress.Create(queueName);
-        if (!endpoints.Contains(endpointAddress))
-        {
-            endpoints.Add(endpointAddress);
-        }
+        registration.RegisterConsumerEndpoint(typeof(T), QueueAddress.Create(queueName));
     }
 
     public async Task StartAsync(ConveyoContext context, CancellationToken cancellationToken)
@@ -76,27 +66,40 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
         var hostOptions = _hostOptions
             ?? throw new InvalidOperationException(ErrorMessages.HostNotConfigured);
 
-        _connectionManager = new RabbitMqConnectionManager(_logger);
-        await _connectionManager.StartAsync(hostOptions, cancellationToken);
-
-        var consumerChannel = _connectionManager.ConsumerChannel
-            ?? throw new InvalidOperationException(ErrorMessages.ChannelNotInitialized);
-
-        var messageHandler = CreateMessageHandler(hostOptions, consumerChannel);
-        var declaredExchanges = new HashSet<string>(StringComparer.Ordinal);
-
-        // Declare all topology before starting consumers, so an early delivery can't publish to a
-        // not-yet-declared exchange. Declares are idempotent.
-        foreach (var (queueName, consumerTypes) in _consumers)
+        if (_stopping is not null)
         {
-            await DeclareConsumerTopologyAsync(consumerChannel, queueName, consumerTypes, context, declaredExchanges, cancellationToken);
+            throw new InvalidOperationException(ErrorMessages.BusAlreadyStarted);
         }
-
-        await DeclareProducerExchangesAsync(consumerChannel, context, declaredExchanges, cancellationToken);
-
-        foreach (var queueName in _consumers.Keys)
+        _stopping = new CancellationTokenSource();
+        try
         {
-            await StartConsumerAsync(consumerChannel, queueName, messageHandler, cancellationToken);
+            _connectionManager = new RabbitMqConnectionManager(_logger);
+            await _connectionManager.StartAsync(hostOptions, cancellationToken);
+
+            var consumerChannel = _connectionManager.ConsumerChannel
+                ?? throw new InvalidOperationException(ErrorMessages.ChannelNotInitialized);
+
+            var messageHandler = CreateMessageHandler(hostOptions, consumerChannel);
+            var declaredExchanges = new HashSet<string>(StringComparer.Ordinal);
+
+            // Declare all topology before starting consumers, so an early delivery can't publish to a
+            // not-yet-declared exchange. Declares are idempotent.
+            foreach (var queue in Queues)
+            {
+                await DeclareConsumerTopologyAsync(consumerChannel, queue.Key, queue.ToArray(), context, declaredExchanges, cancellationToken);
+            }
+
+            await DeclareProducerExchangesAsync(consumerChannel, context, declaredExchanges, cancellationToken);
+
+            foreach (var queue in Queues)
+            {
+                await StartConsumerAsync(consumerChannel, queue.Key, messageHandler, cancellationToken);
+            }
+        }
+        catch
+        {
+            await StopAsync(CancellationToken.None);
+            throw;
         }
     }
 
@@ -123,20 +126,39 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_connectionManager != null)
+        try
         {
-            await _connectionManager.StopAsync(cancellationToken);
+            if (_stopping is not null)
+            {
+                await _stopping.CancelAsync();
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (_connectionManager is not null)
+                {
+                    await _connectionManager.StopAsync(cancellationToken);
+                }
+            }
+            finally
+            {
+                _connectionManager = null;
+                _stopping?.Dispose();
+                _stopping = null;
+            }
         }
     }
 
     public string GetQueueName(Type messageType)
     {
-        if (conveyoOptions.EndpointConventions.TryGetValue(messageType, out var conventionAddress))
+        if (Context.EndpointConventions.TryGetValue(messageType, out var conventionAddress))
         {
             return QueueAddress.GetQueueName(conventionAddress);
         }
 
-        var handlerTypes = conveyoOptions.ConsumerMessages
+        var handlerTypes = Context.ConsumerMessages
             .Where(registeredConsumer => registeredConsumer.Value.Contains(messageType))
             .Select(registeredConsumer => registeredConsumer.Key)
             .ToList();
@@ -147,9 +169,9 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
 
         // More than one matching queue means Send has no unambiguous target — fail fast rather than
         // route to whichever happened to be registered first.
-        var queueNames = _consumers
-            .Where(registeredQueue => registeredQueue.Value.Any(handlerTypes.Contains))
-            .Select(registeredQueue => registeredQueue.Key)
+        var queueNames = Queues
+            .Where(queue => queue.Any(handlerTypes.Contains))
+            .Select(queue => queue.Key)
             .ToList();
         if (queueNames.Count == 0)
         {
@@ -164,7 +186,7 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
     }
 
     public string GetExchangeName(Type type)
-        => conveyoOptions.UrnFor(type);
+        => Context.UrnFor(type);
 
     internal Task<IChannel> CreatePublisherChannelAsync(CancellationToken cancellationToken)
     {
@@ -183,7 +205,8 @@ internal sealed class RabbitMqBusRegistrationContext(ConveyoContext conveyoOptio
             (envelope, exceptions, ct) => OnFaultAsync?.Invoke(envelope, exceptions, ct) ?? Task.CompletedTask,
             hostOptions.MaxRetryCount,
             hostOptions.MaxEnvelopeSizeBytes,
-            hostOptions.IncludeFaultExceptionDetails);
+            hostOptions.IncludeFaultExceptionDetails,
+            _stopping!.Token);
 
     private async Task DeclareConsumerTopologyAsync(
         IChannel channel,

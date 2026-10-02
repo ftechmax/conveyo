@@ -7,26 +7,17 @@ public static class ConveyoExtensions
 {
     public static IServiceCollection AddConveyo(this IServiceCollection services, Action<IConveyoBuilder> configure)
     {
-        var context = new ConveyoContext
-        {
-            HostInfo = GetHostInfo()
-        };
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+        var registration = new ConveyoRegistration();
+        configure(new ConveyoBuilder(services, registration));
+        var context = registration.Build(GetHostInfo());
 
-        var builder = new ConveyoBuilder(services, context);
-        configure(builder);
-
-        var unmapped = context._consumerMessages.Values
-            .SelectMany(messages => messages)
-            .Where(i => !context._urnsByType.ContainsKey(i))
-            .Distinct()
-            .ToList();
-        if (unmapped.Count > 0)
-        {
-            throw new InvalidOperationException(ErrorMessages.ConsumedMessageTypesHaveNoUrnMapping(unmapped));
-        }
-
+        services.AddSingleton(context);
         services.AddSingleton<IBus, Bus>();
-        services.AddHostedService(sp => ActivatorUtilities.CreateInstance<ConveyoHostedService>(sp, context));
+        services.AddSingleton<MessageDataHydrator>();
+        services.AddSingleton<MessageDispatcher>();
+        services.AddHostedService<ConveyoHostedService>();
 
         return services;
     }

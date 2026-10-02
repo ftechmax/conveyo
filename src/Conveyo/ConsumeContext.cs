@@ -58,7 +58,7 @@ internal sealed class ConsumeContextImpl<T>(MessageEnvelope envelope, T message,
     public Task Publish<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : class
     {
         var endpoint = endpointProvider.GetPublishEndpoint<TMessage>();
-        // The AsyncLocal correlation push happens at the ConveyoHostedService boundary so it stays
+        // The AsyncLocal correlation push happens at the MessageDispatcher boundary so it stays
         // live across the whole consumer scope; endpoints just read OutboundContext.Current.
         return endpoint.Publish(message, cancellationToken);
     }

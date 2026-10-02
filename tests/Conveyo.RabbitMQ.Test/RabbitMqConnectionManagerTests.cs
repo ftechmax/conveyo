@@ -20,33 +20,27 @@ public class RabbitMqConnectionManagerTests
     [Test]
     public async Task StartAsync_RetriesInitialConnection_UntilTimeoutIsSpent()
     {
+        // Arrange
         var logger = new CapturingLogger();
         var manager = new RabbitMqConnectionManager(logger);
         var options = UnreachableBroker();
-
         var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            await manager.StartAsync(options, CancellationToken.None);
-            Assert.Fail("Expected the initial connection to fail.");
-        }
-        catch (Exception exception)
-        {
-            Assert.That(exception, Is.Not.InstanceOf<OperationCanceledException>());
-        }
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(logger.Warnings, Has.Count.GreaterThanOrEqualTo(2), "should have retried more than once");
-            Assert.That(logger.Warnings, Has.All.EqualTo(TimeSpan.FromMilliseconds(50)));
-            Assert.That(logger.Errors, Has.Count.EqualTo(1), "should log once when it gives up");
-            Assert.That(stopwatch.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(100)));
-        });
+        // Act
+        var exception = await Should.ThrowAsync<Exception>(() => manager.StartAsync(options, CancellationToken.None));
+
+        // Assert
+        (exception is OperationCanceledException).ShouldBeFalse();
+        logger.Warnings.Count.ShouldBeGreaterThanOrEqualTo(2, "should have retried more than once");
+        logger.Warnings.ShouldAllBe(delay => delay == TimeSpan.FromMilliseconds(50));
+        logger.Errors.Count.ShouldBe(1, "should log once when it gives up");
+        stopwatch.Elapsed.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(100));
     }
 
     [Test]
-    public void StartAsync_DoublesRetryDelay_UpToTheCeiling()
+    public async Task StartAsync_DoublesRetryDelay_UpToTheCeiling()
     {
+        // Arrange
         var logger = new CapturingLogger();
         var manager = new RabbitMqConnectionManager(logger);
         var options = UnreachableBroker();
@@ -54,63 +48,100 @@ public class RabbitMqConnectionManagerTests
         options.InitialConnectionMaxRetryDelay = TimeSpan.FromMilliseconds(40);
         options.InitialConnectionTimeout = TimeSpan.FromMilliseconds(200);
 
-        Assert.That(async () => await manager.StartAsync(options, CancellationToken.None), Throws.Exception);
+        // Act
+        await Should.ThrowAsync<Exception>(() => manager.StartAsync(options, CancellationToken.None));
 
-        Assert.That(logger.Warnings.Take(4), Is.EqualTo(new[]
+        // Assert
+        logger.Warnings.Take(4).ShouldBe(new[]
         {
             TimeSpan.FromMilliseconds(10),
             TimeSpan.FromMilliseconds(20),
             TimeSpan.FromMilliseconds(40),
             TimeSpan.FromMilliseconds(40)
-        }));
+        });
     }
 
     [Test]
-    public void StartAsync_DoesNotRetry_WhenTimeoutIsZero()
+    public async Task StartAsync_DoesNotRetry_WhenTimeoutIsZero()
     {
+        // Arrange
         var logger = new CapturingLogger();
         var manager = new RabbitMqConnectionManager(logger);
         var options = UnreachableBroker();
         options.InitialConnectionTimeout = TimeSpan.Zero;
 
-        Assert.That(async () => await manager.StartAsync(options, CancellationToken.None), Throws.Exception);
+        // Act
+        await Should.ThrowAsync<Exception>(() => manager.StartAsync(options, CancellationToken.None));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(logger.Warnings, Is.Empty);
-            Assert.That(logger.Errors, Has.Count.EqualTo(1));
-        });
+        // Assert
+        logger.Warnings.ShouldBeEmpty();
+        logger.Errors.Count.ShouldBe(1);
     }
 
     [Test]
-    public void StartAsync_Throws_WhenCancelledWhileRetrying()
+    public async Task StartAsync_Throws_WhenCancelledWhileRetrying()
     {
+        // Arrange
         var manager = new RabbitMqConnectionManager();
         var options = UnreachableBroker();
         options.InitialConnectionTimeout = TimeSpan.FromMinutes(1);
-
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(120));
 
-        Assert.That(
-            async () => await manager.StartAsync(options, cancellation.Token),
-            Throws.InstanceOf<OperationCanceledException>());
+        // Act
+        var start = () => manager.StartAsync(options, cancellation.Token);
+
+        // Assert
+        await Should.ThrowAsync<OperationCanceledException>(start);
+        manager.Connection.ShouldBeNull();
+        manager.ConsumerChannel.ShouldBeNull();
     }
 
-    [TestCase(-1, 50, 50, ErrorMessages.InitialConnectionTimeoutCannotBeNegative)]
-    [TestCase(250, 0, 50, ErrorMessages.InitialConnectionRetryDelayMustBePositive)]
-    [TestCase(250, 50, 10, ErrorMessages.InitialConnectionMaxRetryDelayTooSmall)]
-    public void StartAsync_Rejects_InvalidInitialConnectionOptions(
-        int timeoutMs, int retryDelayMs, int maxRetryDelayMs, string expectedMessage)
+    [Test]
+    public async Task StartAsync_RejectsNegativeTimeout()
     {
+        // Arrange
         var manager = new RabbitMqConnectionManager();
         var options = UnreachableBroker();
-        options.InitialConnectionTimeout = TimeSpan.FromMilliseconds(timeoutMs);
-        options.InitialConnectionRetryDelay = TimeSpan.FromMilliseconds(retryDelayMs);
-        options.InitialConnectionMaxRetryDelay = TimeSpan.FromMilliseconds(maxRetryDelayMs);
+        options.InitialConnectionTimeout = TimeSpan.FromMilliseconds(-1);
 
-        Assert.That(
-            async () => await manager.StartAsync(options, CancellationToken.None),
-            Throws.InstanceOf<ArgumentOutOfRangeException>().With.Message.Contains(expectedMessage));
+        // Act
+        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
+            () => manager.StartAsync(options, CancellationToken.None));
+
+        // Assert
+        exception.Message.ShouldContain(ErrorMessages.InitialConnectionTimeoutCannotBeNegative);
+    }
+
+    [Test]
+    public async Task StartAsync_RejectsNonPositiveRetryDelay()
+    {
+        // Arrange
+        var manager = new RabbitMqConnectionManager();
+        var options = UnreachableBroker();
+        options.InitialConnectionRetryDelay = TimeSpan.Zero;
+
+        // Act
+        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
+            () => manager.StartAsync(options, CancellationToken.None));
+
+        // Assert
+        exception.Message.ShouldContain(ErrorMessages.InitialConnectionRetryDelayMustBePositive);
+    }
+
+    [Test]
+    public async Task StartAsync_RejectsMaximumDelayBelowInitialDelay()
+    {
+        // Arrange
+        var manager = new RabbitMqConnectionManager();
+        var options = UnreachableBroker();
+        options.InitialConnectionMaxRetryDelay = TimeSpan.FromMilliseconds(10);
+
+        // Act
+        var exception = await Should.ThrowAsync<ArgumentOutOfRangeException>(
+            () => manager.StartAsync(options, CancellationToken.None));
+
+        // Assert
+        exception.Message.ShouldContain(ErrorMessages.InitialConnectionMaxRetryDelayTooSmall);
     }
 
     /// <summary>Collects the RetryDelay of every warning and counts the give-up errors.</summary>
